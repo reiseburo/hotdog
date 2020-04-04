@@ -1,0 +1,23 @@
+= Hotdog!
+
+Hotdog is a syslog-to-Kafka forwarder which aims to get log entries into
+link:https://kafka.apache.org[Apache Kafka]
+as quickly as possible.
+
+Hotdog is configured by the `hotdog.yml` file, which has a very fluid syntax at
+the moment.
+
+
+== Development
+
+Hotdog is tested against the latest Rust stable. A simple `cargo build` should
+compile a working `hotdog` binary for your platform.
+
+
+On Linux systems it is easy to test with:
+
+[source,bash]
+----
+logger --server 127.0.0.1  -T -P 1514 "hello world"
+----
+
