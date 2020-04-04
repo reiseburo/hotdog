@@ -49,13 +49,15 @@ async fn accept_loop(addr: impl ToSocketAddrs, settings: Arc<Settings>) -> Resul
     Ok(())
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 enum Field {
     Severity,
     Facility,
     Timestamp,
     Hostname,
     Appname,
-    Message,
+    Msg,
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,7 +70,7 @@ enum Action {
 
 #[derive(Debug, Deserialize)]
 struct Rule {
-    field: String,
+    field: Field,
     action: Action,
     regex: String,
 }
@@ -104,13 +106,10 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>) -> Result<(
         let line = line?;
         let msg = parse_message(line)?;
         for rule in settings.rules.iter() {
-            info!("matching against field: {}", rule.field);
-            if let pattern = &rule.regex {
-                let re = Regex::new(&pattern).unwrap();
-                if let Some(captures) = re.captures(&msg.msg) {
-                    if let Some(name) = captures.name("name") {
-                        info!("saying howdy to {}", name.as_str());
-                    }
+            let re = Regex::new(&rule.regex).unwrap();
+            if let Some(captures) = re.captures(&msg.msg) {
+                if let Some(name) = captures.name("name") {
+                    info!("saying howdy to {}", name.as_str());
                 }
             }
         }
