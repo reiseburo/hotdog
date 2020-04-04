@@ -16,6 +16,8 @@ use async_std::{
     task,
 };
 use log::*;
+use rdkafka::config::ClientConfig;
+use rdkafka::producer::{FutureProducer, FutureRecord};
 use regex::Regex;
 use syslog_rfc5424::parse_message;
 
@@ -61,6 +63,12 @@ async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>) -
     let reader = BufReader::new(&stream);
     let mut lines = reader.lines();
 
+    let producer: FutureProducer = ClientConfig::new()
+        .set("bootstrap.servers", &settings.global.kafka.brokers)
+        .set("message.timeout.ms", "5000")
+        .create()
+        .expect("Producer creation error");
+
     while let Some(line) = lines.next().await {
         let line = line?;
         let msg = parse_message(line)?;
@@ -69,6 +77,12 @@ async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>) -
             if let Some(captures) = re.captures(&msg.msg) {
                 if let Some(name) = captures.name("name") {
                     info!("saying howdy to {}", name.as_str());
+                    producer
+                        .send(
+                            FutureRecord::to(&settings.global.kafka.topic)
+                                .payload(&msg.msg)
+                                .key(&msg.msg),
+                            0).await;
                 }
             }
         }
@@ -76,4 +90,3 @@ async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>) -
 
     Ok(())
 }
-

@@ -7,6 +7,10 @@ global:
     address: '127.0.0.1'
     port: 1514
     tls: false
+  kafka:
+    brokers: '127.0.0.1:9092'
+    # Default topic to log messages to that are not otherwise mapped
+    topic: 'test'
 
 # Fields upon which rules can apply:
 #   - severity

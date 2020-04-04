@@ -57,15 +57,22 @@ pub struct Rule {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ListenSettings {
+pub struct Listen {
     pub address: String,
     pub port: u64,
     pub tls: bool,
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Kafka {
+    pub brokers: String,
+    pub topic: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Global {
-    pub listen: ListenSettings,
+    pub listen: Listen,
+    pub kafka: Kafka,
 }
 
 #[derive(Debug, Deserialize)]
