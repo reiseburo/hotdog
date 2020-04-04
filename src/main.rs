@@ -1,7 +1,6 @@
 /**
  * hotdog's main
  */
-
 extern crate config;
 extern crate regex;
 extern crate serde;
@@ -11,10 +10,10 @@ extern crate syslog_rfc5424;
 
 use async_std::{
     io::BufReader,
+    net::{TcpListener, TcpStream, ToSocketAddrs},
     prelude::*,
     sync::Arc,
     task,
-    net::{TcpListener, TcpStream, ToSocketAddrs},
 };
 use log::*;
 use regex::Regex;
@@ -27,7 +26,10 @@ fn main() -> Result<()> {
 
     let conf = load_configuration();
     let settings: Arc<Settings> = Arc::new(conf.try_into().unwrap());
-    let addr = format!("{}:{}", settings.global.listen.address, settings.global.listen.port);
+    let addr = format!(
+        "{}:{}",
+        settings.global.listen.address, settings.global.listen.port
+    );
     info!("Listening on: {}", addr);
 
     let fut = accept_loop(addr, settings.clone());
