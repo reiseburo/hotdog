@@ -16,6 +16,6 @@ global:
 #   - appname
 #   - msg
 rules:
-  - regex: '^hello\s+(?P<name>\w+)?'
-    field: msg
-    action: drop
+  - field: msg
+    regex: '^hello\s+(?P<name>\w+)?'
+    action: forward

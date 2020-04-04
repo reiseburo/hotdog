@@ -19,13 +19,15 @@ use log::*;
 use regex::Regex;
 use syslog_rfc5424::parse_message;
 
+mod settings;
+
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 fn main() -> Result<()> {
     pretty_env_logger::init();
 
-    let conf = load_configuration();
-    let settings: Arc<Settings> = Arc::new(conf.try_into().unwrap());
+    let settings = Arc::new(settings::load());
+
     let addr = format!(
         "{}:{}",
         settings.global.listen.address, settings.global.listen.port
@@ -40,7 +42,7 @@ fn main() -> Result<()> {
  * accept_loop will simply create the socket listener and dispatch newly accepted connections to
  * the connection_loop function
  */
-async fn accept_loop(addr: impl ToSocketAddrs, settings: Arc<Settings>) -> Result<()> {
+async fn accept_loop(addr: impl ToSocketAddrs, settings: Arc<settings::Settings>) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
     let mut incoming = listener.incoming();
     while let Some(stream) = incoming.next().await {
@@ -51,56 +53,11 @@ async fn accept_loop(addr: impl ToSocketAddrs, settings: Arc<Settings>) -> Resul
     Ok(())
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-enum Field {
-    Severity,
-    Facility,
-    Timestamp,
-    Hostname,
-    Appname,
-    Msg,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-enum Action {
-    Drop,
-    Forward,
-    Modify,
-}
-
-#[derive(Debug, Deserialize)]
-struct Rule {
-    field: Field,
-    action: Action,
-    regex: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct ListenSettings {
-    //#[serde(default = "localhost")]
-    address: String,
-    port: u64,
-    tls: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct Global {
-    listen: ListenSettings,
-}
-
-#[derive(Debug, Deserialize)]
-struct Settings {
-    global: Global,
-    rules: Vec<Rule>,
-}
-
 /**
  * connection_loop is responsible for handling incoming syslog streams connections
  *
  */
-async fn connection_loop(stream: TcpStream, settings: Arc<Settings>) -> Result<()> {
+async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>) -> Result<()> {
     let reader = BufReader::new(&stream);
     let mut lines = reader.lines();
 
@@ -120,28 +77,3 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>) -> Result<(
     Ok(())
 }
 
-fn load_configuration() -> config::Config {
-    /*
-     * Load our settings in the priority order of:
-     *
-     *   - yaml file
-     *   - environment variables
-     *
-     * Each layer overriding properties from the last
-     */
-    let mut conf = config::Config::default();
-    conf.merge(config::File::with_name("hotdog").required(false))
-        .unwrap()
-        .merge(config::Environment::with_prefix("HOTDOG"))
-        .unwrap();
-
-    let _port: u64 = conf
-        .get("global.listen.port")
-        .expect("Configuration had no `global.listen.port` setting");
-    return conf;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-}
