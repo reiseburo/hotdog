@@ -9,6 +9,8 @@ global:
     brokers: '127.0.0.1:9092'
     # Default topic to log messages to that are not otherwise mapped
     topic: 'test'
+  metrics:
+    statsd: 'localhost:8125'
 
 # Fields upon which rules can apply:
 #   - severity
