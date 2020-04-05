@@ -52,6 +52,7 @@ pub enum Action {
     Forward {
         topic: String,
     },
+    Stop,
 }
 
 #[derive(Debug, Deserialize)]

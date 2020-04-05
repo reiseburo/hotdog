@@ -21,7 +21,6 @@ use handlebars::Handlebars;
 use log::*;
 use rdkafka::config::ClientConfig;
 use rdkafka::producer::{FutureProducer, FutureRecord};
-use regex::Regex;
 use std::collections::HashMap;
 use syslog_rfc5424::parse_message;
 
@@ -80,8 +79,17 @@ async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>) -
         let line = line?;
         debug!("log: {}", line);
         let msg = parse_message(line)?;
+        let mut continue_rules = true;
 
         for rule in settings.rules.iter() {
+            /*
+             * If we have been told to stop processing rules, then it's time to bail on this log
+             * message
+             */
+            if ! continue_rules {
+                break;
+            }
+
             // The output buffer that we will ultimately send along to the Kafka service
             let mut output = String::new();
             let mut rule_matches = false;
@@ -129,6 +137,9 @@ async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>) -
                                     .key(&output), 0).await;
 
                         }
+                    },
+                    settings::Action::Stop => {
+                        continue_rules = false;
                     },
                 }
             }

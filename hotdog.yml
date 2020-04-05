@@ -31,3 +31,6 @@ rules:
 
       - type: forward
         topic: test
+
+      # We don't want any other rules to try to consume these messages
+      - type: stop
