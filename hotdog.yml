@@ -34,3 +34,10 @@ rules:
 
       # We don't want any other rules to try to consume these messages
       - type: stop
+
+  # Match all JSON looking content
+  - regex: '^\{(.*)?\}$'
+    field: msg
+    # But don't do anything with it ^_^
+    actions:
+      - type: stop

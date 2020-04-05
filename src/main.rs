@@ -13,6 +13,7 @@ extern crate serde_regex;
 extern crate syslog_rfc5424;
 
 use async_std::{
+    fs::File,
     io::BufReader,
     net::{TcpListener, TcpStream, ToSocketAddrs},
     prelude::*,
@@ -59,6 +60,10 @@ fn main() -> Result<()> {
     let settings_file = matches.value_of("config").unwrap_or("hotdog.yml");
     let settings = Arc::new(settings::load(settings_file));
 
+    if let Some(test_file) = matches.value_of("test") {
+        return task::block_on(test_rules(&test_file, settings.clone()));
+    }
+
     let metrics = Arc::new(Statsd::send_to(&settings.global.metrics.statsd)
         .expect("Failed to create Statsd recorder")
         .named("hotdog")
@@ -70,15 +75,51 @@ fn main() -> Result<()> {
     );
     info!("Listening on: {}", addr);
 
-    let fut = accept_loop(addr, settings.clone(), metrics.clone());
-    task::block_on(fut)
+    task::block_on(
+        accept_loop(addr, settings.clone(), metrics.clone()))
+}
+
+async fn test_rules(file_name: &str, settings: Arc<Settings>) -> Result<()> {
+    let file = File::open(file_name).await.expect("Failed to open the file");
+    let mut reader = BufReader::new(file);
+    let mut lines = reader.lines();
+    let mut number: u64 = 0;
+
+    while let Some(line) = lines.next().await {
+        let line = line?;
+        debug!("Testing the line: {}", line);
+        number = number + 1;
+        let mut matches: Vec<&regex::Regex> = vec![];
+
+        for rule in settings.rules.iter() {
+            match rule.field {
+                Field::Msg => {
+                    if let Some(captures) = rule.regex.captures(&line) {
+                        matches.push(&rule.regex);
+                    }
+                },
+                _ => {
+                },
+            }
+        }
+
+        if matches.len() > 0 {
+            println!("Line {} matches on:", number);
+            for m in matches.iter() {
+                println!("\t - {}", m);
+            }
+        }
+
+    }
+
+    Ok(())
 }
 
 /**
  * accept_loop will simply create the socket listener and dispatch newly accepted connections to
  * the connection_loop function
  */
-async fn accept_loop(addr: impl ToSocketAddrs, settings: Arc<settings::Settings>, metrics: Arc<LockingOutput>) -> Result<()> {
+async fn accept_loop(addr: impl ToSocketAddrs, settings: Arc<Settings>, metrics: Arc<LockingOutput>) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
     let mut incoming = listener.incoming();
     let connection_count = metrics.counter("connections");
@@ -96,7 +137,7 @@ async fn accept_loop(addr: impl ToSocketAddrs, settings: Arc<settings::Settings>
  * connection_loop is responsible for handling incoming syslog streams connections
  *
  */
-async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>, metrics: Arc<LockingOutput>) -> Result<()> {
+async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Arc<LockingOutput>) -> Result<()> {
     debug!("Connection received: {}", stream.peer_addr()?);
     let reader = BufReader::new(&stream);
     let mut lines = reader.lines();
@@ -135,7 +176,7 @@ async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>, m
             hash.insert("msg", String::from(&msg.msg));
 
             match rule.field {
-                settings::Field::Msg => {
+                Field::Msg => {
                     if let Some(captures) = rule.regex.captures(&msg.msg) {
                         rule_matches = true;
 
@@ -161,12 +202,12 @@ async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>, m
              */
             for action in rule.actions.iter() {
                 match action {
-                    settings::Action::Replace { template } => {
+                    Action::Replace { template } => {
                         if let Ok(rendered) = hb.render_template(template, &hash) {
                             output = rendered;
                         }
                     },
-                    settings::Action::Forward { topic } => {
+                    Action::Forward { topic } => {
                         if let Ok(rendered) = hb.render_template(topic, &hash) {
                             info!("action is forward {:?}", rendered);
                             producer.send(
@@ -176,7 +217,7 @@ async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>, m
 
                         }
                     },
-                    settings::Action::Stop => {
+                    Action::Stop => {
                         continue_rules = false;
                     },
                 }
