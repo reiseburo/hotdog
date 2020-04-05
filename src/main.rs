@@ -77,10 +77,11 @@ async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>) -
     while let Some(line) = lines.next().await {
         let line = line?;
         let msg = parse_message(line)?;
-        // The output buffer that we will ultimately send along to the Kafka service
-        let mut output = String::new();
 
         for rule in settings.rules.iter() {
+            // The output buffer that we will ultimately send along to the Kafka service
+            let mut output = String::new();
+
             let re = Regex::new(&rule.regex).expect("Failed to compile a regex");
             let mut rule_matches = false;
             let mut hash = HashMap::new();
