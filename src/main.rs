@@ -1,6 +1,7 @@
 /**
  * hotdog's main
  */
+extern crate clap;
 extern crate config;
 extern crate dipstick;
 extern crate handlebars;
@@ -18,6 +19,7 @@ use async_std::{
     sync::Arc,
     task,
 };
+use clap::{Arg, App};
 use dipstick::*;
 use handlebars::Handlebars;
 use log::*;
@@ -35,7 +37,28 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>
 fn main() -> Result<()> {
     pretty_env_logger::init();
 
-    let settings = Arc::new(settings::load());
+    let matches = App::new("Hotdog")
+                          .version(env!("CARGO_PKG_VERSION"))
+                          .author("R Tyler Croy <rtyler@brokenco.de")
+                          .about("Forward syslog over to Kafka with ease")
+                          .arg(Arg::with_name("config")
+                               .short("c")
+                               .long("config")
+                               .value_name("FILE")
+                               .help("Sets a custom config file")
+                               .default_value("hotdog.yml")
+                               .takes_value(true))
+                          .arg(Arg::with_name("test")
+                              .short("t")
+                              .long("test")
+                              .value_name("TEST_FILE")
+                              .help("Test a log file against the configured rules")
+                              .takes_value(true))
+                          .get_matches();
+
+    let settings_file = matches.value_of("config").unwrap_or("hotdog.yml");
+    let settings = Arc::new(settings::load(settings_file));
+
     let metrics = Arc::new(Statsd::send_to(&settings.global.metrics.statsd)
         .expect("Failed to create Statsd recorder")
         .named("hotdog")

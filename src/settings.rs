@@ -4,14 +4,21 @@
  */
 
 
+use async_std::path::Path;
 use regex;
 
-pub fn load() -> Settings {
-    let conf = load_configuration();
-    conf.try_into().expect("Failed to parse the hotdog.yml file")
+pub fn load(file: &str) -> Settings {
+    let conf = load_configuration(file);
+    conf.try_into().expect("Failed to parse the configuration file")
 }
 
-fn load_configuration() -> config::Config {
+fn load_configuration(file: &str) -> config::Config {
+    let file_path = Path::new(file);
+
+    if file_path.extension().unwrap() != "yml" {
+        panic!("The configuration file must end with .yml");
+    }
+
     /*
      * Load our settings in the priority order of:
      *
@@ -21,7 +28,8 @@ fn load_configuration() -> config::Config {
      * Each layer overriding properties from the last
      */
     let mut conf = config::Config::default();
-    conf.merge(config::File::with_name("hotdog").required(false))
+    let stem = file_path.file_stem().expect("Failed to get the filestem for config file");
+    conf.merge(config::File::with_name(stem.to_str().expect("Failed to convert stem to &str")).required(false))
         .unwrap()
         .merge(config::Environment::with_prefix("HOTDOG"))
         .unwrap();
