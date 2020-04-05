@@ -64,6 +64,7 @@ async fn accept_loop(addr: impl ToSocketAddrs, settings: Arc<settings::Settings>
  *
  */
 async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>) -> Result<()> {
+    debug!("Connection received: {}", stream.peer_addr()?);
     let reader = BufReader::new(&stream);
     let mut lines = reader.lines();
 
@@ -77,6 +78,7 @@ async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>) -
 
     while let Some(line) = lines.next().await {
         let line = line?;
+        debug!("log: {}", line);
         let msg = parse_message(line)?;
 
         for rule in settings.rules.iter() {
@@ -133,5 +135,6 @@ async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>) -
         }
     }
 
+    debug!("Connection terminating for {}", stream.peer_addr()?);
     Ok(())
 }
