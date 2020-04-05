@@ -4,6 +4,8 @@
  */
 
 
+use regex;
+
 pub fn load() -> Settings {
     let conf = load_configuration();
     conf.try_into().expect("Failed to parse the hotdog.yml file")
@@ -56,7 +58,8 @@ pub enum Action {
 pub struct Rule {
     pub field: Field,
     pub actions: Vec<Action>,
-    pub regex: String,
+    #[serde(with = "serde_regex")]
+    pub regex: regex::Regex,
 }
 
 #[derive(Debug, Deserialize)]

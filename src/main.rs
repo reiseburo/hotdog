@@ -7,6 +7,7 @@ extern crate regex;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+extern crate serde_regex;
 extern crate syslog_rfc5424;
 
 use async_std::{
@@ -81,18 +82,16 @@ async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>) -
         for rule in settings.rules.iter() {
             // The output buffer that we will ultimately send along to the Kafka service
             let mut output = String::new();
-
-            let re = Regex::new(&rule.regex).expect("Failed to compile a regex");
             let mut rule_matches = false;
             let mut hash = HashMap::new();
             hash.insert("msg", String::from(&msg.msg));
 
             match rule.field {
                 settings::Field::Msg => {
-                    if let Some(captures) = re.captures(&msg.msg) {
+                    if let Some(captures) = rule.regex.captures(&msg.msg) {
                         rule_matches = true;
 
-                        for name in re.capture_names() {
+                        for name in rule.regex.capture_names() {
                             if let Some(name) = name {
                                 if let Some(value) = captures.name(name) {
                                     hash.insert(name, String::from(value.as_str()));

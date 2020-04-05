@@ -425,6 +425,7 @@ dependencies = [
  "regex",
  "serde 1.0.106",
  "serde_derive",
+ "serde_regex",
  "syslog_rfc5424",
 ]
 
@@ -973,6 +974,16 @@ checksum = "78a7a12c167809363ec3bd7329fc0a3369056996de43c4b37ef3cd54a6ce4867"
 dependencies = [
  "itoa",
  "ryu",
+ "serde 1.0.106",
+]
+
+[[package]]
+name = "serde_regex"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6df1bd02973c8c85e333287f6ac6c6a5fbed414e4be450fd6f52280b7c7b209"
+dependencies = [
+ "regex",
  "serde 1.0.106",
 ]
 
