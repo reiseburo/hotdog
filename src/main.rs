@@ -2,6 +2,7 @@
  * hotdog's main
  */
 extern crate config;
+extern crate dipstick;
 extern crate handlebars;
 extern crate regex;
 extern crate serde;
@@ -17,6 +18,7 @@ use async_std::{
     sync::Arc,
     task,
 };
+use dipstick::*;
 use handlebars::Handlebars;
 use log::*;
 use rdkafka::config::ClientConfig;
@@ -26,12 +28,18 @@ use syslog_rfc5424::parse_message;
 
 mod settings;
 
+use settings::*;
+
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 fn main() -> Result<()> {
     pretty_env_logger::init();
 
     let settings = Arc::new(settings::load());
+    let metrics = Arc::new(Statsd::send_to(&settings.global.metrics.statsd)
+        .expect("Failed to create Statsd recorder")
+        .named("hotdog")
+        .metrics());
 
     let addr = format!(
         "{}:{}",
@@ -39,7 +47,7 @@ fn main() -> Result<()> {
     );
     info!("Listening on: {}", addr);
 
-    let fut = accept_loop(addr, settings.clone());
+    let fut = accept_loop(addr, settings.clone(), metrics.clone());
     task::block_on(fut)
 }
 
@@ -47,13 +55,16 @@ fn main() -> Result<()> {
  * accept_loop will simply create the socket listener and dispatch newly accepted connections to
  * the connection_loop function
  */
-async fn accept_loop(addr: impl ToSocketAddrs, settings: Arc<settings::Settings>) -> Result<()> {
+async fn accept_loop(addr: impl ToSocketAddrs, settings: Arc<settings::Settings>, metrics: Arc<LockingOutput>) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
     let mut incoming = listener.incoming();
+    let connection_count = metrics.counter("connections");
+
     while let Some(stream) = incoming.next().await {
+        connection_count.count(1);
         let stream = stream?;
         debug!("Accepting from: {}", stream.peer_addr()?);
-        let _handle = task::spawn(connection_loop(stream, settings.clone()));
+        let _handle = task::spawn(connection_loop(stream, settings.clone(), metrics.clone()));
     }
     Ok(())
 }
@@ -62,10 +73,11 @@ async fn accept_loop(addr: impl ToSocketAddrs, settings: Arc<settings::Settings>
  * connection_loop is responsible for handling incoming syslog streams connections
  *
  */
-async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>) -> Result<()> {
+async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>, metrics: Arc<LockingOutput>) -> Result<()> {
     debug!("Connection received: {}", stream.peer_addr()?);
     let reader = BufReader::new(&stream);
     let mut lines = reader.lines();
+    let lines_count = metrics.counter("lines");
 
     let producer: FutureProducer = ClientConfig::new()
         .set("bootstrap.servers", &settings.global.kafka.brokers)
@@ -78,7 +90,10 @@ async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>) -
     while let Some(line) = lines.next().await {
         let line = line?;
         debug!("log: {}", line);
+
         let msg = parse_message(line)?;
+        lines_count.count(1);
+
         let mut continue_rules = true;
 
         for rule in settings.rules.iter() {

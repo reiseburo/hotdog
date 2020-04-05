@@ -77,9 +77,15 @@ pub struct Kafka {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Metrics {
+    pub statsd: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Global {
     pub listen: Listen,
     pub kafka: Kafka,
+    pub metrics: Metrics,
 }
 
 #[derive(Debug, Deserialize)]
