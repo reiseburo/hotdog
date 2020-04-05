@@ -35,3 +35,6 @@ serde_derive = "~1.0.106"
 
 # Used for rule matching
 regex = "~1.3.6"
+
+# Used for string replacements and other template based transformations
+handlebars = "~3.0.1"

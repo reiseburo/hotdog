@@ -42,17 +42,20 @@ pub enum Field {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", tag = "type")]
 pub enum Action {
-    Drop,
-    Forward,
-    Modify,
+    Replace {
+        template: String,
+    },
+    Forward {
+        topic: String,
+    },
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Rule {
     pub field: Field,
-    pub action: Action,
+    pub actions: Vec<Action>,
     pub regex: String,
 }
 

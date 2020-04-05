@@ -1,6 +1,4 @@
 # Example hotdog configuration
-#
-#
 ---
 global:
   listen:
@@ -20,6 +18,14 @@ global:
 #   - appname
 #   - msg
 rules:
-  - field: msg
-    regex: '^hello\s+(?P<name>\w+)?'
-    action: forward
+  - regex: '^hello\s+(?P<name>\w+)?'
+    field: msg
+    actions:
+      - type: replace
+        template: |
+          This is the total message: {{msg}}
+
+          And the name is: {{name}}
+
+      - type: forward
+        topic: test

@@ -2,6 +2,7 @@
  * hotdog's main
  */
 extern crate config;
+extern crate handlebars;
 extern crate regex;
 extern crate serde;
 #[macro_use]
@@ -15,10 +16,12 @@ use async_std::{
     sync::Arc,
     task,
 };
+use handlebars::Handlebars;
 use log::*;
 use rdkafka::config::ClientConfig;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use regex::Regex;
+use std::collections::HashMap;
 use syslog_rfc5424::parse_message;
 
 mod settings;
@@ -69,20 +72,62 @@ async fn connection_loop(stream: TcpStream, settings: Arc<settings::Settings>) -
         .create()
         .expect("Producer creation error");
 
+    let hb = Handlebars::new();
+
     while let Some(line) = lines.next().await {
         let line = line?;
         let msg = parse_message(line)?;
+        // The output buffer that we will ultimately send along to the Kafka service
+        let mut output = String::new();
+
         for rule in settings.rules.iter() {
-            let re = Regex::new(&rule.regex).unwrap();
-            if let Some(captures) = re.captures(&msg.msg) {
-                if let Some(name) = captures.name("name") {
-                    info!("saying howdy to {}", name.as_str());
-                    producer
-                        .send(
-                            FutureRecord::to(&settings.global.kafka.topic)
-                                .payload(&msg.msg)
-                                .key(&msg.msg),
-                            0).await;
+            let re = Regex::new(&rule.regex).expect("Failed to compile a regex");
+            let mut rule_matches = false;
+            let mut hash = HashMap::new();
+            hash.insert("msg", String::from(&msg.msg));
+
+            match rule.field {
+                settings::Field::Msg => {
+                    if let Some(captures) = re.captures(&msg.msg) {
+                        rule_matches = true;
+
+                        for name in re.capture_names() {
+                            if let Some(name) = name {
+                                if let Some(value) = captures.name(name) {
+                                    hash.insert(name, String::from(value.as_str()));
+                                }
+                            }
+                        }
+                    }
+                },
+                _ => {
+                },
+            }
+
+            if rule_matches == false {
+                break;
+            }
+
+            /*
+             * Process the actions one the rule has matched
+             */
+            for action in rule.actions.iter() {
+                match action {
+                    settings::Action::Replace { template } => {
+                        if let Ok(rendered) = hb.render_template(template, &hash) {
+                            output = rendered;
+                        }
+                    },
+                    settings::Action::Forward { topic } => {
+                        if let Ok(rendered) = hb.render_template(topic, &hash) {
+                            info!("action is forward {:?}", rendered);
+                            producer.send(
+                                FutureRecord::to(&rendered)
+                                    .payload(&output)
+                                    .key(&output), 0).await;
+
+                        }
+                    },
                 }
             }
         }
