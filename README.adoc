@@ -80,7 +80,7 @@ receives it.
 Some actions, such as <<action-replace>>, can perform variable substitutions on
 log line. The variables available are a combination of the built-in variables
 listed below, and whatever named groups exist in the `regex` field of the
-<<rule>>.
+<<rules>>.
 
 [CAUTION]
 ====
