@@ -1,24 +1,106 @@
+ifdef::env-github[]
+:tip-caption: :bulb:
+:note-caption: :information_source:
+:important-caption: :heavy_exclamation_mark:
+:caution-caption: :fire:
+:warning-caption: :warning:
+endif::[]
+
 = Hotdog!
 
 Hotdog is a syslog-to-Kafka forwarder which aims to get log entries into
 link:https://kafka.apache.org[Apache Kafka]
 as quickly as possible.
 
+[[configuration]]
 == Configuration
 
 Hotdog is configured by the `hotdog.yml` file, which has a very fluid syntax at
 the moment. The two main sections are the `global` and `rules` blocks.
 
+[[global]]
 === Global
 
 The `global` configuration block helps configure `hotdog` itself, namely the
 port it listens on, etc.
 
+[[rules]]
 === Rules
 
 Hotdog's rules define how it should handle and route the syslog messages it
 receives.
 
+[[actions]]
+==== Actions
+
+Actions determine what `hotdog` should do with the given log line when it
+receives it. 
+
+[[variables]]
+Some actions, such as <<action-replace>>, can perform variable substitutions on
+log line. The variables available are a combination of the built-in variables
+listed below, and whatever named groups exist in the `regex` field of the
+<<rule>>.
+
+[CAUTION]
+====
+Named groups will **override** any built-in variables at the time of
+substitution, so be careful you are not naming your groups anything which might
+overlap with the built-in variable names
+====
+
+[[builtin-vars]]
+.Built-in Variables
+|===
+| Name | Description
+
+| `msg`
+| The original log line message sent along from the syslog sender.
+
+|===
+
+[[action-forward]]
+===== Forward
+
+
+[[action-merge]]
+===== Merge
+
+.Parameters
+|===
+| Key | Value
+
+| `json`
+| A YAMl map which will be merged with the JSON object deserialized from the matched log line.
+
+|===
+
+The `merge` action will only work when the log line is a JSON **object**. JSON
+arrays, or other arbitrary strings will not merge properly, and cause **all**
+subsequent actions for the given rule to be aborted.
+
+[[action-replace]]
+===== Replace
+
+.Parameters
+|===
+| Key | Value
+
+| `template`
+| A link:https://handlebarsjs.com/[Handlebars]-style template which can be used to output a modified message.
+
+|===
+
+The `template` may utilize the <<variables, matched and built-in variables>> in
+order to generate a modified message. The output is only available to
+subsequent actions defined _after_ the `replace` action. Subsequent rules in
+the chain **will not** utilize this generated message.
+
+
+[[action-stop]]
+===== Stop
+
+[[development]]
 == Development
 
 Hotdog is tested against the latest Rust stable. A simple `cargo build` should

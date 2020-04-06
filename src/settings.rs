@@ -5,6 +5,7 @@
 
 
 use async_std::path::Path;
+use serde_json::Value;
 use regex;
 
 pub fn load(file: &str) -> Settings {
@@ -54,11 +55,14 @@ pub enum Field {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum Action {
-    Replace {
-        template: String,
-    },
     Forward {
         topic: String,
+    },
+    Merge {
+        json: Value,
+    },
+    Replace {
+        template: String,
     },
     Stop,
 }

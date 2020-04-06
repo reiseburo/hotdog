@@ -40,4 +40,21 @@ rules:
     field: msg
     # But don't do anything with it ^_^
     actions:
+      - type: merge
+        json:
+          meta:
+            hotdog:
+              version: '{{version}}'
+              timestamp: '{{iso8601}}'
+
+      - type: forward
+        topic: test
+
       - type: stop
+
+  # Catch-all, send everything else to a "logs-unknown" topic
+  - regex: '.*'
+    field: msg
+    actions:
+      - type: forward
+        topic: 'logs-unknown'

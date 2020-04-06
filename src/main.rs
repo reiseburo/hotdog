@@ -29,6 +29,8 @@ use rdkafka::producer::{FutureProducer, FutureRecord};
 use std::collections::HashMap;
 use syslog_rfc5424::parse_message;
 
+
+mod merge;
 mod settings;
 
 use settings::*;
@@ -81,7 +83,7 @@ fn main() -> Result<()> {
 
 async fn test_rules(file_name: &str, settings: Arc<Settings>) -> Result<()> {
     let file = File::open(file_name).await.expect("Failed to open the file");
-    let mut reader = BufReader::new(file);
+    let reader = BufReader::new(file);
     let mut lines = reader.lines();
     let mut number: u64 = 0;
 
@@ -190,11 +192,15 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Ar
                     }
                 },
                 _ => {
+                    debug!("unhandled `field` for this rule: {}", rule.regex);
                 },
             }
 
-            if rule_matches == false {
-                break;
+            /*
+             * This specific didn't match, so onto the next one
+             */
+            if ! rule_matches {
+                continue;
             }
 
             /*
@@ -202,11 +208,6 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Ar
              */
             for action in rule.actions.iter() {
                 match action {
-                    Action::Replace { template } => {
-                        if let Ok(rendered) = hb.render_template(template, &hash) {
-                            output = rendered;
-                        }
-                    },
                     Action::Forward { topic } => {
                         if let Ok(rendered) = hb.render_template(topic, &hash) {
                             info!("action is forward {:?}", rendered);
@@ -215,6 +216,22 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Ar
                                     .payload(&output)
                                     .key(&output), 0).await;
 
+                        }
+                    },
+                    Action::Merge { json } => {
+                        if let Ok(mut msg_json) = serde_json::from_str::<serde_json::Value>(&msg.msg) {
+                            merge::merge(&mut msg_json, json);
+                            debug!("merged: {:?}", msg_json);
+                            output = serde_json::to_string(&msg_json)?;
+                        }
+                        else {
+                            error!("Failed to parse as JSON, stopping actions: {}", &msg.msg);
+                            continue_rules = false;
+                        }
+                    },
+                    Action::Replace { template } => {
+                        if let Ok(rendered) = hb.render_template(template, &hash) {
+                            output = rendered;
                         }
                     },
                     Action::Stop => {

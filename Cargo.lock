@@ -476,6 +476,7 @@ dependencies = [
  "regex",
  "serde 1.0.106",
  "serde_derive",
+ "serde_json",
  "serde_regex",
  "syslog_rfc5424",
 ]
