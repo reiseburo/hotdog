@@ -12,11 +12,51 @@ Hotdog is a syslog-to-Kafka forwarder which aims to get log entries into
 link:https://kafka.apache.org[Apache Kafka]
 as quickly as possible.
 
+
+[source,bash]
+----
+Hotdog 0.1.0
+R Tyler Croy <rtyler@brokenco.de
+Forward syslog over to Kafka with ease
+
+USAGE:
+    hotdog [OPTIONS]
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+OPTIONS:
+    -c, --config <FILE>       Sets a custom config file [default: hotdog.yml]
+    -t, --test <TEST_FILE>    Test a log file against the configured rules
+----
+
 [[configuration]]
 == Configuration
 
 Hotdog is configured by the `hotdog.yml` file, which has a very fluid syntax at
 the moment. The two main sections are the `global` and `rules` blocks.
+
+
+Rules defined in the configuration can be tested against an example log file in
+order to verify that the right rules are matching the expected log inputs, for
+example:
+
+[source,bash]
+----
+❯ RUST_LOG=info ./target/debug/hotdog -t example.log
+Line 1 matches on:
+         - ^hello\s+(?P<name>\w+)?
+         - .*
+Line 2 matches on:
+         - .*
+Line 3 matches on:
+         - .*
+Line 4 matches on:
+         - ^\{(.*)?\}$
+         - .*
+
+----
 
 [[global]]
 === Global
