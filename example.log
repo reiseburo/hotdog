@@ -1,0 +1,4 @@
+hello there
+This is a somewhat longer line of logs?
+This is a MUCH longer log line and it should not be truncated, hopefully
+{"this": "is some JSON data", "which": "should also be transmitted properly"}
