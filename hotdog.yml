@@ -36,7 +36,7 @@ rules:
       - type: stop
 
   # Match all JSON looking content
-  - regex: '^\{(.*)?\}$'
+  - jmespath: 'meta.topic'
     field: msg
     # But don't do anything with it ^_^
     actions:

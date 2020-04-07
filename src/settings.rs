@@ -71,8 +71,18 @@ pub enum Action {
 pub struct Rule {
     pub field: Field,
     pub actions: Vec<Action>,
-    #[serde(with = "serde_regex")]
+    #[serde(with = "serde_regex", default = "empty_regex")]
     pub regex: regex::Regex,
+    #[serde(default = "empty_str")]
+    pub jmespath: String,
+}
+
+fn empty_regex() -> regex::Regex {
+    return regex::Regex::new("").unwrap();
+}
+
+fn empty_str() -> String {
+    return String::new();
 }
 
 #[derive(Debug, Deserialize)]

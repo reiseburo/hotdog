@@ -40,6 +40,9 @@ serde_regex = "~0.4.0"
 # Used for rule matching
 regex = "~1.3.6"
 
+# used for rule matching on JSON
+jmespath = { git = "https://github.com/jmespath/jmespath.rs" }
+
 # Needed to report metrics of hotdog's performance
 dipstick = "~0.7.11"
 

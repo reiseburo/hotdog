@@ -272,6 +272,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "deunicode"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "850878694b7933ca4c9569d30a34b55031b9b139ee1fc7b94a527c4ef960d690"
+
+[[package]]
 name = "digest"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -470,6 +476,7 @@ dependencies = [
  "dipstick",
  "futures",
  "handlebars",
+ "jmespath",
  "log",
  "pretty_env_logger",
  "rdkafka",
@@ -504,6 +511,17 @@ name = "itoa"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8b7a7c0c47db5545ed3fef7468ee7bb5b74691498139e4b3f6a20685dc6dd8e"
+
+[[package]]
+name = "jmespath"
+version = "0.2.0"
+source = "git+https://github.com/jmespath/jmespath.rs#6a0b4c29db9f9ca3fe8fb49bef5cb10d0d217b69"
+dependencies = [
+ "lazy_static",
+ "serde 1.0.106",
+ "serde_json",
+ "slug",
+]
 
 [[package]]
 name = "kernel32-sys"
@@ -1151,6 +1169,15 @@ name = "slab"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c111b5bd5695e56cffe5129854aa230b39c93a305372fdbb2668ca2394eea9f8"
+
+[[package]]
+name = "slug"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3bc762e6a4b6c6fcaade73e77f9ebc6991b676f88bb2358bddb56560f073373"
+dependencies = [
+ "deunicode",
+]
 
 [[package]]
 name = "smallvec"

@@ -5,6 +5,7 @@ extern crate clap;
 extern crate config;
 extern crate dipstick;
 extern crate handlebars;
+extern crate jmespath;
 extern crate regex;
 extern crate serde;
 #[macro_use]
@@ -28,7 +29,6 @@ use rdkafka::config::ClientConfig;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use std::collections::HashMap;
 use syslog_rfc5424::parse_message;
-
 
 mod merge;
 mod settings;
@@ -91,13 +91,24 @@ async fn test_rules(file_name: &str, settings: Arc<Settings>) -> Result<()> {
         let line = line?;
         debug!("Testing the line: {}", line);
         number = number + 1;
-        let mut matches: Vec<&regex::Regex> = vec![];
+        let mut matches: Vec<&str> = vec![];
 
         for rule in settings.rules.iter() {
             match rule.field {
                 Field::Msg => {
-                    if let Some(captures) = rule.regex.captures(&line) {
-                        matches.push(&rule.regex);
+                    if rule.jmespath.len() > 0 {
+                        let expr = jmespath::compile(&rule.jmespath).unwrap();
+                        if let Ok(data) = jmespath::Variable::from_json(&line) {
+                            // Search the data with the compiled expression
+                            if let Ok(result) = expr.search(data) {
+                                if ! result.is_null() {
+                                    matches.push(&rule.jmespath);
+                                }
+                            }
+                        }
+                    }
+                    else if let Some(captures) = rule.regex.captures(&line) {
+                        matches.push(&rule.regex.as_str());
                     }
                 },
                 _ => {
@@ -179,7 +190,21 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Ar
 
             match rule.field {
                 Field::Msg => {
-                    if let Some(captures) = rule.regex.captures(&msg.msg) {
+                    /*
+                     * Check to see if we have a jmespath first
+                     */
+                    if rule.jmespath.len() > 0 {
+                        let expr = jmespath::compile(&rule.jmespath).unwrap();
+                        if let Ok(data) = jmespath::Variable::from_json(&msg.msg) {
+                            // Search the data with the compiled expression
+                            if let Ok(result) = expr.search(data) {
+                                if ! result.is_null() {
+                                    rule_matches = true;
+                                    /* TODO: need to find a way to extrac tmatches */
+                                }
+                            }
+                        }
+                    } else if let Some(captures) = rule.regex.captures(&msg.msg) {
                         rule_matches = true;
 
                         for name in rule.regex.capture_names() {
