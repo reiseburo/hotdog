@@ -247,7 +247,19 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Ar
                         if let Ok(mut msg_json) = serde_json::from_str::<serde_json::Value>(&msg.msg) {
                             merge::merge(&mut msg_json, json);
                             debug!("merged: {:?}", msg_json);
+
+                            /*
+                             * This is a bit inefficient, but until I can figure out a better way
+                             * to render the variables that are being substituted in a merged JSON
+                             * object, hotdog will just render the JSON object and then render it
+                             * as a template.
+                             *
+                             * what could possibly go wrong
+                             */
                             output = serde_json::to_string(&msg_json)?;
+                            if let Ok(rendered) = hb.render_template(&output, &hash) {
+                                output = rendered;
+                            }
                         }
                         else {
                             error!("Failed to parse as JSON, stopping actions: {}", &msg.msg);
@@ -269,4 +281,10 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Ar
 
     debug!("Connection terminating for {}", stream.peer_addr()?);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
 }
