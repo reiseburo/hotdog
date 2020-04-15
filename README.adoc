@@ -102,6 +102,8 @@ overlap with the built-in variable names
 [[action-forward]]
 ===== Forward
 
+The forward action will imply the <<action-stop, Stop action>> when used.
+
 
 [[action-merge]]
 ===== Merge

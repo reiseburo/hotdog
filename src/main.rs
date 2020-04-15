@@ -206,7 +206,13 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Ar
                             if let Ok(result) = expr.search(data) {
                                 if ! result.is_null() {
                                     rule_matches = true;
-                                    /* TODO: need to find a way to extrac tmatches */
+                                    debug!("jmespath rule matched, value: {}", result);
+                                    if let Some(value) = result.as_string() {
+                                        hash.insert("value".to_string(), value.to_string());
+                                    }
+                                    else {
+                                        warn!("Unable to parse out the string value for {}, the `value` variable substitution will not be available,", result);
+                                    }
                                 }
                             }
                         }
@@ -245,8 +251,14 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Ar
             for action in rule.actions.iter() {
                 match action {
                     Action::Forward { topic } => {
-                        debug!("Forwarding to the topic: `{}`", topic);
-                        send_to_kafka(output, topic, &producer, &state).await;
+                        if let Ok(actual) = hb.render_template(&topic, &hash) {
+                            debug!("Forwarding to the topic: `{}`", actual);
+                            send_to_kafka(output, &actual, &producer, &state).await;
+                            continue_rules = false;
+                        }
+                        else {
+                            error!("Failed to process the configured topic: `{}`", topic);
+                        }
                         break;
                     },
                     Action::Merge { json } => {

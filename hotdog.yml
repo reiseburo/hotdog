@@ -48,7 +48,7 @@ rules:
               timestamp: '{{iso8601}}'
 
       - type: forward
-        topic: test
+        topic: '{{value}}'
 
       - type: stop
 
@@ -58,3 +58,5 @@ rules:
     actions:
       - type: forward
         topic: 'logs-unknown'
+
+      - type: stop
