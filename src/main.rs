@@ -2,6 +2,7 @@
  * hotdog's main
  */
 extern crate clap;
+extern crate chrono;
 extern crate config;
 extern crate dipstick;
 extern crate handlebars;
@@ -11,6 +12,8 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_regex;
+#[macro_use]
+extern crate serde_json;
 extern crate syslog_rfc5424;
 
 use async_std::{
@@ -22,6 +25,7 @@ use async_std::{
     task,
 };
 use clap::{Arg, App};
+use chrono::prelude::*;
 use dipstick::*;
 use handlebars::Handlebars;
 use log::*;
@@ -186,7 +190,9 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Ar
             let mut output = String::new();
             let mut rule_matches = false;
             let mut hash = HashMap::new();
-            hash.insert("msg", String::from(&msg.msg));
+            hash.insert("msg".to_string(), String::from(&msg.msg));
+            hash.insert("version".to_string(), env!["CARGO_PKG_VERSION"].to_string());
+            hash.insert("iso8601".to_string(), Utc::now().to_rfc3339());
 
             match rule.field {
                 Field::Msg => {
@@ -210,7 +216,7 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Ar
                         for name in rule.regex.capture_names() {
                             if let Some(name) = name {
                                 if let Some(value) = captures.name(name) {
-                                    hash.insert(name, String::from(value.as_str()));
+                                    hash.insert(name.to_string(), String::from(value.as_str()));
                                 }
                             }
                         }
@@ -228,41 +234,25 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Ar
                 continue;
             }
 
+            let state = RuleState {
+                hb: &hb,
+                variables: &hash,
+            };
+
             /*
              * Process the actions one the rule has matched
              */
             for action in rule.actions.iter() {
                 match action {
                     Action::Forward { topic } => {
-                        if let Ok(rendered) = hb.render_template(topic, &hash) {
-                            info!("action is forward {:?}", rendered);
-                            producer.send(
-                                FutureRecord::to(&rendered)
-                                    .payload(&output)
-                                    .key(&output), 0).await;
-
-                        }
+                        send_to_kafka(output, topic, &producer, &state);
+                        break;
                     },
                     Action::Merge { json } => {
-                        if let Ok(mut msg_json) = serde_json::from_str::<serde_json::Value>(&msg.msg) {
-                            merge::merge(&mut msg_json, json);
-                            debug!("merged: {:?}", msg_json);
-
-                            /*
-                             * This is a bit inefficient, but until I can figure out a better way
-                             * to render the variables that are being substituted in a merged JSON
-                             * object, hotdog will just render the JSON object and then render it
-                             * as a template.
-                             *
-                             * what could possibly go wrong
-                             */
-                            output = serde_json::to_string(&msg_json)?;
-                            if let Ok(rendered) = hb.render_template(&output, &hash) {
-                                output = rendered;
-                            }
+                        if let Ok(buffer) = perform_merge(&msg.msg, json, &state) {
+                            output = buffer;
                         }
                         else {
-                            error!("Failed to parse as JSON, stopping actions: {}", &msg.msg);
                             continue_rules = false;
                         }
                     },
@@ -283,8 +273,145 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Ar
     Ok(())
 }
 
+/**
+ * Send the given output message to the desired Kafka topic
+ */
+async fn send_to_kafka(output: String,
+    topic: &str,
+    producer: &FutureProducer,
+    state: &RuleState<'_>) {
+
+    if let Ok(rendered) = state.hb.render_template(topic, &state.variables) {
+        info!("action is forward {:?}", rendered);
+        let wait: i64 = 0;
+        producer.send(
+            FutureRecord::to(&rendered)
+                .payload(&output)
+                .key(&output), wait).await;
+
+    }
+}
+
+/**
+ * perform_merge will generate the buffer resulting of the JSON merge
+ */
+fn perform_merge(buffer: &str,
+    to_merge: &serde_json::Value,
+    state: &RuleState) -> std::result::Result<String, String> {
+
+    if let Ok(mut msg_json) = serde_json::from_str::<serde_json::Value>(buffer) {
+        Ok(buffer.to_string())
+    }
+    else {
+        error!("Failed to parse as JSON, stopping actions: {}", buffer);
+
+        Err("Not JSON".to_string())
+    }
+}
+
+/**
+ * RuleState exists to help curry state into merge/replacement functions
+ */
+struct RuleState<'a> {
+    variables: &'a HashMap<String, String>,
+    hb: &'a handlebars::Handlebars<'a>,
+}
+
+/**
+ * merge_and_render will take care of merging the two values and manage the
+ * rendering of variable substitutions
+ */
+fn merge_and_render<'a>(mut left: &mut serde_json::Value,
+    right: &serde_json::Value,
+    state: &RuleState<'a>) -> String {
+    merge::merge(&mut left, &right);
+
+    let output = serde_json::to_string(&left).unwrap();
+
+    /*
+     * This is a bit inefficient, but until I can figure out a better way
+     * to render the variables that are being substituted in a merged JSON
+     * object, hotdog will just render the JSON object and then render it
+     * as a template.
+     *
+     * what could possibly go wrong
+     */
+    if let Ok(rendered) = state.hb.render_template(&output, &state.variables) {
+        return rendered;
+    }
+    return output;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn merge_with_empty() {
+        let hb = Handlebars::new();
+        let hash = HashMap::<String, String>::new();
+        let state = RuleState {
+            hb: &hb,
+            variables: &hash,
+        };
+
+        let to_merge = json!({});
+        let output = perform_merge("{}", &to_merge, &state);
+        assert_eq!(output, Ok("{}".to_string()));
+    }
+
+    /**
+     * merge without a JSON object, this should return the original buffer
+     */
+    #[test]
+    fn merge_with_non_object() -> std::result::Result<(), String> {
+        let hb = Handlebars::new();
+        let hash = HashMap::<String, String>::new();
+        let state = RuleState {
+            hb: &hb,
+            variables: &hash,
+        };
+
+        let to_merge = json!([]);
+        let output = perform_merge("{}", &to_merge, &state)?;
+        assert_eq!(output, "{}".to_string());
+        Ok(())
+    }
+
+    /**
+     * merging without a JSON buffer should return an error
+     */
+    #[test]
+    fn merge_without_json_buffer() {
+        let hb = Handlebars::new();
+        let hash = HashMap::<String, String>::new();
+        let state = RuleState {
+            hb: &hb,
+            variables: &hash,
+        };
+
+        let to_merge = json!({});
+        let output = perform_merge("invalid", &to_merge, &state);
+        let expected = Err("Not JSON".to_string());
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn test_merge_and_render() {
+        let mut hash = HashMap::<String, String>::new();
+        hash.insert("value".to_string(), "hi".to_string());
+
+        let hb = Handlebars::new();
+        let state = RuleState {
+            hb: &hb,
+            variables: &hash,
+        };
+
+        let mut origin = json!({"rust" : true});
+        let config = json!({"test" : "{{value}}"});
+
+        let buf = merge_and_render(&mut origin, &config, &state);
+        assert_eq!(buf, r#"{"rust":true,"test":"hi"}"#);
+    }
 
 }

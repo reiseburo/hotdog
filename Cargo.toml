@@ -48,3 +48,5 @@ dipstick = "~0.7.11"
 
 # Used for string replacements and other template based transformations
 handlebars = "~3.0.1"
+
+chrono = "~0.4.11"
