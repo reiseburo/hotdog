@@ -245,10 +245,12 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Ar
             for action in rule.actions.iter() {
                 match action {
                     Action::Forward { topic } => {
-                        send_to_kafka(output, topic, &producer, &state);
+                        debug!("Forwarding to the topic: `{}`", topic);
+                        send_to_kafka(output, topic, &producer, &state).await;
                         break;
                     },
                     Action::Merge { json } => {
+                        debug!("merging JSON content: {}", json);
                         if let Ok(buffer) = perform_merge(&msg.msg, json, &state) {
                             output = buffer;
                         }
@@ -257,6 +259,7 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Ar
                         }
                     },
                     Action::Replace { template } => {
+                        debug!("replacing content with template: {}", template);
                         if let Ok(rendered) = hb.render_template(template, &hash) {
                             output = rendered;
                         }
@@ -299,8 +302,26 @@ fn perform_merge(buffer: &str,
     to_merge: &serde_json::Value,
     state: &RuleState) -> std::result::Result<String, String> {
 
+    /*
+     * If the administrator configured the merge incorrectly, just pass the buffer along un-merged
+     */
+    if ! to_merge.is_object() {
+        error!("Merge requested was not a JSON object: {}", to_merge);
+        return Ok(buffer.to_string());
+    }
+
     if let Ok(mut msg_json) = serde_json::from_str::<serde_json::Value>(buffer) {
-        Ok(buffer.to_string())
+
+        merge::merge(&mut msg_json, to_merge);
+        if let Ok(output) = serde_json::to_string(&msg_json) {
+            if let Ok(rendered) = state.hb.render_template(&output, &state.variables) {
+                return Ok(rendered);
+            }
+            return Ok(output);
+        }
+        else {
+            Err("Failed to render".to_string())
+        }
     }
     else {
         error!("Failed to parse as JSON, stopping actions: {}", buffer);
@@ -372,7 +393,7 @@ mod tests {
             variables: &hash,
         };
 
-        let to_merge = json!([]);
+        let to_merge = json!([1]);
         let output = perform_merge("{}", &to_merge, &state)?;
         assert_eq!(output, "{}".to_string());
         Ok(())
@@ -394,6 +415,42 @@ mod tests {
         let output = perform_merge("invalid", &to_merge, &state);
         let expected = Err("Not JSON".to_string());
         assert_eq!(output, expected);
+    }
+
+    /**
+     * merging with a JSON buffer should return Ok with the right result
+     */
+    #[test]
+    fn merge_with_json_buffer() {
+        let hb = Handlebars::new();
+        let hash = HashMap::<String, String>::new();
+        let state = RuleState {
+            hb: &hb,
+            variables: &hash,
+        };
+
+        let to_merge = json!({"hello" : 1});
+        let output = perform_merge("{}", &to_merge, &state);
+        assert_eq!(output, Ok("{\"hello\":1}".to_string()));
+    }
+
+    /**
+     * Ensure that merging with a JSON buffer that it renders variable substitutions
+     */
+    #[test]
+    fn merge_with_json_buffer_and_vars() {
+        let hb = Handlebars::new();
+        let mut hash = HashMap::<String, String>::new();
+        hash.insert("name".to_string(), "world".to_string());
+
+        let state = RuleState {
+            hb: &hb,
+            variables: &hash,
+        };
+
+        let to_merge = json!({"hello" : "{{name}}"});
+        let output = perform_merge("{}", &to_merge, &state);
+        assert_eq!(output, Ok("{\"hello\":\"world\"}".to_string()));
     }
 
     #[test]
