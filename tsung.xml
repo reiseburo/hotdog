@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<!DOCTYPE tsung SYSTEM "/user/share/tsung/tsung-1.0.dtd">
+<tsung loglevel="notice" version="1.0">
+  <clients>
+    <client host="localhost" use_controller_vm="false" maxusers="64000" />
+  </clients>
+
+  <servers>
+    <server host="127.0.0.1" port="1514" type="tcp" />
+  </servers>
+
+  <load>
+    <arrivalphase phase="1" duration="10" unit="second">
+      <users maxnumber="100" arrivalrate="10" unit="second" />
+    </arrivalphase>
+  </load>
+
+  <sessions>
+    <session name="json" weight="2" type="ts_raw">
+        <transaction name="open">
+            <request> <raw data="&lt;13&gt;1 2020-04-15T21:16:43.268478-07:00 coconut tyler - - [timeQuality] {&quot;this&quot;: &quot;is some JSON data&quot;, &quot;meta&quot; : {&quot;topic&quot;: &quot;test&quot;}}" ack="no_ack"></raw> </request>
+        </transaction>
+    </session>
+
+    <session name="junk" weight="1" type="ts_raw">
+        <transaction name="open">
+            <request> <raw data="&lt;13&gt;1 2020-04-15T21:16:43.268478-07:00 coconut tyler - - [timeQuality] hello there" ack="no_ack"></raw></request>
+        </transaction>
+    </session>
+  </sessions>
+</tsung>
