@@ -24,7 +24,7 @@
 
     <session name="junk" weight="1" type="ts_raw">
         <transaction name="open">
-            <request> <raw data="&lt;13&gt;1 2020-04-15T21:16:43.268478-07:00 coconut tyler - - [timeQuality] hello there" ack="no_ack"></raw></request>
+            <request> <raw data="&lt;13&gt;1 2020-04-15T21:16:43.268478-07:00 coconut tyler - - [timeQuality] some junk" ack="no_ack"></raw></request>
         </transaction>
     </session>
   </sessions>
