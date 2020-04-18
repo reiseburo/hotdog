@@ -17,9 +17,8 @@ extern crate serde_json;
 extern crate syslog_rfc5424;
 
 use async_std::{
-    fs::File,
     io::BufReader,
-    net::{TcpListener, TcpStream, ToSocketAddrs},
+    net::{TcpListener, ToSocketAddrs},
     prelude::*,
     sync::Arc,
     task,
@@ -35,11 +34,21 @@ use std::collections::HashMap;
 use syslog_rfc5424::parse_message;
 
 mod merge;
+mod rules;
 mod settings;
+mod serve_tls;
 
 use settings::*;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+/**
+ * RuleState exists to help curry state into merge/replacement functions
+ */
+struct RuleState<'a> {
+    variables: &'a HashMap<String, String>,
+    hb: &'a handlebars::Handlebars<'a>,
+}
 
 fn main() -> Result<()> {
     pretty_env_logger::init();
@@ -67,7 +76,7 @@ fn main() -> Result<()> {
     let settings = Arc::new(settings::load(settings_file));
 
     if let Some(test_file) = matches.value_of("test") {
-        return task::block_on(test_rules(&test_file, settings.clone()));
+        return task::block_on(rules::test_rules(&test_file, settings.clone()));
     }
 
     let metrics = Arc::new(Statsd::send_to(&settings.global.metrics.statsd)
@@ -81,56 +90,20 @@ fn main() -> Result<()> {
     );
     info!("Listening on: {}", addr);
 
-    task::block_on(
-        accept_loop(addr, settings.clone(), metrics.clone()))
-}
-
-async fn test_rules(file_name: &str, settings: Arc<Settings>) -> Result<()> {
-    let file = File::open(file_name).await.expect("Failed to open the file");
-    let reader = BufReader::new(file);
-    let mut lines = reader.lines();
-    let mut number: u64 = 0;
-
-    while let Some(line) = lines.next().await {
-        let line = line?;
-        debug!("Testing the line: {}", line);
-        number = number + 1;
-        let mut matches: Vec<&str> = vec![];
-
-        for rule in settings.rules.iter() {
-            match rule.field {
-                Field::Msg => {
-                    if rule.jmespath.len() > 0 {
-                        let expr = jmespath::compile(&rule.jmespath).unwrap();
-                        if let Ok(data) = jmespath::Variable::from_json(&line) {
-                            // Search the data with the compiled expression
-                            if let Ok(result) = expr.search(data) {
-                                if ! result.is_null() {
-                                    matches.push(&rule.jmespath);
-                                }
-                            }
-                        }
-                    }
-                    else if let Some(captures) = rule.regex.captures(&line) {
-                        matches.push(&rule.regex.as_str());
-                    }
-                },
-                _ => {
-                },
-            }
-        }
-
-        if matches.len() > 0 {
-            println!("Line {} matches on:", number);
-            for m in matches.iter() {
-                println!("\t - {}", m);
-            }
-        }
-
+    match &settings.global.listen.tls {
+        TlsType::CertAndKey { cert: _, key: _ } => {
+            info!("Serving in TLS mode");
+            task::block_on(
+                crate::serve_tls::accept_loop(addr, settings.clone(), metrics.clone()))
+        },
+        _ => {
+            info!("Serving in plaintext mode");
+            task::block_on(
+                accept_loop(addr, settings.clone(), metrics.clone()))
+        },
     }
-
-    Ok(())
 }
+
 
 /**
  * accept_loop will simply create the socket listener and dispatch newly accepted connections to
@@ -145,7 +118,13 @@ async fn accept_loop(addr: impl ToSocketAddrs, settings: Arc<Settings>, metrics:
         connection_count.count(1);
         let stream = stream?;
         debug!("Accepting from: {}", stream.peer_addr()?);
-        let _handle = task::spawn(connection_loop(stream, settings.clone(), metrics.clone()));
+        let reader = BufReader::new(stream);
+        let settings = settings.clone();
+        let metrics = metrics.clone();
+
+        task::spawn(async move {
+            read_logs(reader, settings, metrics).await;
+        });
     }
     Ok(())
 }
@@ -154,9 +133,8 @@ async fn accept_loop(addr: impl ToSocketAddrs, settings: Arc<Settings>, metrics:
  * connection_loop is responsible for handling incoming syslog streams connections
  *
  */
-async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Arc<LockingOutput>) -> Result<()> {
-    debug!("Connection received: {}", stream.peer_addr()?);
-    let reader = BufReader::new(&stream);
+
+pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(reader: BufReader<R>, settings: Arc<Settings>, metrics: Arc<LockingOutput>) -> Result<()> {
     let mut lines = reader.lines();
     let lines_count = metrics.counter("lines");
 
@@ -172,9 +150,20 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Ar
         let line = line?;
         debug!("log: {}", line);
 
-        let msg = parse_message(line)?;
-        lines_count.count(1);
+        let parsed = parse_message(line);
 
+        match &parsed {
+            Err(e) => {
+                error!("failed to parse message: {}", e);
+            },
+            _ => {},
+        }
+
+        /*
+         * Now that we've logged the error, let's unpack and bubble the error anyways
+         */
+        let msg = parsed?;
+        lines_count.count(1);
         let mut continue_rules = true;
 
         for rule in settings.rules.iter() {
@@ -254,6 +243,10 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Ar
                         if let Ok(actual) = hb.render_template(&topic, &hash) {
                             debug!("Forwarding to the topic: `{}`", actual);
                             send_to_kafka(output, &actual, &producer, &state).await;
+                            /*
+                             * `output` is consumed by send_to_kafka, so the rest of the rules
+                             * should be skipped.
+                             */
                             continue_rules = false;
                         }
                         else {
@@ -284,7 +277,6 @@ async fn connection_loop(stream: TcpStream, settings: Arc<Settings>, metrics: Ar
         }
     }
 
-    debug!("Connection terminating for {}", stream.peer_addr()?);
     Ok(())
 }
 
@@ -297,13 +289,12 @@ async fn send_to_kafka(output: String,
     state: &RuleState<'_>) {
 
     if let Ok(rendered) = state.hb.render_template(topic, &state.variables) {
-        info!("action is forward {:?}", rendered);
+        debug!("action is forward {:?}", rendered);
         let wait: i64 = 0;
         producer.send(
             FutureRecord::to(&rendered)
                 .payload(&output)
                 .key(&output), wait).await;
-
     }
 }
 
@@ -343,14 +334,6 @@ fn perform_merge(buffer: &str,
 }
 
 /**
- * RuleState exists to help curry state into merge/replacement functions
- */
-struct RuleState<'a> {
-    variables: &'a HashMap<String, String>,
-    hb: &'a handlebars::Handlebars<'a>,
-}
-
-/**
  * merge_and_render will take care of merging the two values and manage the
  * rendering of variable substitutions
  */
@@ -374,6 +357,7 @@ fn merge_and_render<'a>(mut left: &mut serde_json::Value,
     }
     return output;
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -482,5 +466,4 @@ mod tests {
         let buf = merge_and_render(&mut origin, &config, &state);
         assert_eq!(buf, r#"{"rust":true,"test":"hi"}"#);
     }
-
 }

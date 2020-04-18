@@ -64,6 +64,12 @@ Line 4 matches on:
 The `global` configuration block helps configure `hotdog` itself, namely the
 port it listens on, etc.
 
+==== Listen
+
+===== TLS
+
+Certificate and Key files should be PEM encoded, and can be created with `certtool --generate-privkey --outfile ca-key.pem`
+
 [[rules]]
 === Rules
 
@@ -154,5 +160,13 @@ On Linux systems it is easy to test with:
 [source,bash]
 ----
 logger --server 127.0.0.1  -T -P 1514 "hello world"
+logger --server 127.0.0.1  -T -P 1514 -f example.log 
+----
+
+For TLS connections, you can use the `openssl` `s_client` command:
+
+[source,bash]
+----
+echo  '<13>1 2020-04-18T15:16:09.956153-07:00 coconut tyler - - [timeQuality tzKnown="1" isSynced="1" syncAccuracy="505061"] hello world' | openssl s_client -connect localhost:6514
 ----
 

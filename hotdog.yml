@@ -7,6 +7,8 @@ global:
     tls:
       cert: './contrib/cert.pem'
       key: './contrib/cert-key.pem'
+    #port: 1514
+    #tls:
   kafka:
     brokers: '127.0.0.1:9092'
     # Default topic to log messages to that are not otherwise mapped
