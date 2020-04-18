@@ -85,11 +85,33 @@ fn empty_str() -> String {
     return String::new();
 }
 
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum TlsType {
+    None,
+
+    /**
+     * The CertsAndKey struct will contain PathBuf values if the tls section was
+     * included
+     */
+    CertAndKey {
+        cert: std::path::PathBuf,
+        key: std::path::PathBuf,
+    },
+}
+
+impl Default for TlsType {
+    fn default() -> TlsType {
+        TlsType::None
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Listen {
     pub address: String,
     pub port: u64,
-    pub tls: bool,
+    pub tls: TlsType,
 }
 
 #[derive(Debug, Deserialize)]
@@ -119,4 +141,14 @@ pub struct Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_default_tls() {
+        assert_eq!(TlsType::None, TlsType::default());
+    }
+
+    #[test]
+    fn test_empty_str() {
+        assert_eq!("".to_string(), empty_str());
+    }
 }

@@ -1,0 +1,4 @@
+= Contributed files
+
+These files help with demonstrations and testing of `hotdog` and are _not_
+expected to be used in anything resembling a production environment.

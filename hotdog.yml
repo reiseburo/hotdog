@@ -3,8 +3,10 @@
 global:
   listen:
     address: '127.0.0.1'
-    port: 1514
-    tls: false
+    port: 6514
+    tls:
+      cert: './contrib/cert.pem'
+      key: './contrib/cert-key.pem'
   kafka:
     brokers: '127.0.0.1:9092'
     # Default topic to log messages to that are not otherwise mapped
