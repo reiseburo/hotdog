@@ -1,0 +1,22 @@
+# Example hotdog configuration
+---
+global:
+  listen:
+    address: '127.0.0.1'
+    port: 1514
+    tls:
+  kafka:
+    brokers: '127.0.0.1:9092'
+    topic: 'default-topic'
+  metrics:
+    statsd: 'localhost:8125'
+
+rules:
+  # Catch-all, send everything else to a "logs-unknown" topic
+  - regex: '.*'
+    field: msg
+    actions:
+      - type: forward
+        topic: 'logs-unknown'
+
+      - type: stop
