@@ -10,20 +10,20 @@
   </servers>
 
   <load>
-    <arrivalphase phase="1" duration="10" unit="second">
-      <users maxnumber="100" arrivalrate="10" unit="second" />
+    <arrivalphase phase="1" duration="120" unit="second">
+      <users maxnumber="100000" arrivalrate="100" unit="second" />
     </arrivalphase>
   </load>
 
   <sessions>
-    <session name="json" weight="2" type="ts_raw">
-        <transaction name="open">
+    <session name="json" weight="10" type="ts_raw">
+        <transaction name="jsonopen">
             <request> <raw data="&lt;13&gt;1 2020-04-15T21:16:43.268478-07:00 coconut tyler - - [timeQuality] {&quot;this&quot;: &quot;is some JSON data&quot;, &quot;meta&quot; : {&quot;topic&quot;: &quot;test&quot;}}" ack="no_ack"></raw> </request>
         </transaction>
     </session>
 
     <session name="junk" weight="1" type="ts_raw">
-        <transaction name="open">
+        <transaction name="junkopen">
             <request> <raw data="&lt;13&gt;1 2020-04-15T21:16:43.268478-07:00 coconut tyler - - [timeQuality] some junk" ack="no_ack"></raw></request>
         </transaction>
     </session>
