@@ -3,10 +3,10 @@
  * hotdog.yml file format
  */
 
-
 use async_std::path::Path;
-use serde_json::Value;
+use log::*;
 use regex;
+use serde_json::Value;
 
 pub fn load(file: &str) -> Settings {
     let conf = load_configuration(file);
@@ -20,6 +20,8 @@ fn load_configuration(file: &str) -> config::Config {
         panic!("The configuration file must end with .yml");
     }
 
+    debug!("Loading configuration from {}", file);
+
     /*
      * Load our settings in the priority order of:
      *
@@ -29,8 +31,7 @@ fn load_configuration(file: &str) -> config::Config {
      * Each layer overriding properties from the last
      */
     let mut conf = config::Config::default();
-    let stem = file_path.file_stem().expect("Failed to get the filestem for config file");
-    conf.merge(config::File::with_name(stem.to_str().expect("Failed to convert stem to &str")).required(false))
+    conf.merge(config::File::with_name(file))
         .unwrap()
         .merge(config::Environment::with_prefix("HOTDOG"))
         .unwrap();
