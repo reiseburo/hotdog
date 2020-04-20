@@ -6,11 +6,24 @@ ifdef::env-github[]
 :warning-caption: :warning:
 endif::[]
 
-= Hotdog!
+= 🌭 Hotdog!
 
 Hotdog is a syslog-to-Kafka forwarder which aims to get log entries into
 link:https://kafka.apache.org[Apache Kafka]
 as quickly as possible.
+
+It listens for syslog messages over plaintext or TLS-encrupted TCP connection
+and depending on the defined <<rules>> it will route and even modify messages
+on their way into a <<yml-kafka, configured Kafka broker>>.
+
+== Features
+
+* syslog over plaintext or TLS-encrypted TCP connections.
+* <<rules>> and <<actions>> for matching, modifying, and routing syslog
+  messages based on the message content.
+* Rich integration with Kafka with <<yml-kafka-conf, full configuration passthrough>> for
+  link:https://github.com/edenhill/librdkafka[librdkafka]
+* Built-in <<yml-metrics, metrics integration>> for daemon health reporting.
 
 [source,bash]
 ----
