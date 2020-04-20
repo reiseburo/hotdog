@@ -6,7 +6,8 @@ global:
     port: 1514
     tls:
   kafka:
-    brokers: '127.0.0.1:9092'
+    conf:
+      bootstrap.servers: '127.0.0.1:9092'
     topic: 'default-topic'
   metrics:
     statsd: 'localhost:8125'

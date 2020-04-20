@@ -7,6 +7,7 @@ use async_std::path::Path;
 use log::*;
 use regex;
 use serde_json::Value;
+use std::collections::HashMap;
 
 pub fn load(file: &str) -> Settings {
     let conf = load_configuration(file);
@@ -117,7 +118,7 @@ pub struct Listen {
 
 #[derive(Debug, Deserialize)]
 pub struct Kafka {
-    pub brokers: String,
+    pub conf: HashMap<String, String>,
     pub topic: String,
 }
 

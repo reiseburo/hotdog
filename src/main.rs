@@ -138,13 +138,13 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(reader: BufR
     let mut lines = reader.lines();
     let lines_count = metrics.counter("lines");
 
-    let producer: FutureProducer = ClientConfig::new()
-        .set("bootstrap.servers", &settings.global.kafka.brokers)
-        .set("message.timeout.ms", "5000")
-        .create()
-        .expect("Producer creation error");
-
     let hb = Handlebars::new();
+
+    let mut rd_conf = ClientConfig::new();
+    for (key, value) in settings.global.kafka.conf.iter() {
+        rd_conf.set(key, value);
+    }
+    let producer: FutureProducer = rd_conf.create().expect("Failed to create Kafka producer!");
 
     while let Some(line) = lines.next().await {
         let line = line?;
