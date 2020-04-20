@@ -240,6 +240,14 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(reader: BufR
             for action in rule.actions.iter() {
                 match action {
                     Action::Forward { topic } => {
+                        /*
+                         * If a custom output was never defined, just take the
+                         * raw message and pass that along.
+                         */
+                        if output.len() == 0 {
+                            output = String::from(&msg.msg);
+                        }
+
                         if let Ok(actual) = hb.render_template(&topic, &hash) {
                             debug!("Forwarding to the topic: `{}`", actual);
                             send_to_kafka(output, &actual, &producer, &state).await;
