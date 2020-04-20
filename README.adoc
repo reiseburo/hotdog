@@ -12,7 +12,6 @@ Hotdog is a syslog-to-Kafka forwarder which aims to get log entries into
 link:https://kafka.apache.org[Apache Kafka]
 as quickly as possible.
 
-
 [source,bash]
 ----
 Hotdog 0.1.0
@@ -37,7 +36,6 @@ OPTIONS:
 Hotdog is configured by the `hotdog.yml` file, which has a very fluid syntax at
 the moment. The two main sections are the `global` and `rules` blocks.
 
-
 Rules defined in the configuration can be tested against an example log file in
 order to verify that the right rules are matching the expected log inputs, for
 example:
@@ -55,7 +53,6 @@ Line 3 matches on:
 Line 4 matches on:
          - ^\{(.*)?\}$
          - .*
-
 ----
 
 [[global]]
@@ -233,27 +230,45 @@ receives it.
 [[action-forward]]
 ===== Forward
 
-The forward action will imply the <<action-stop, Stop action>> when used.
+The forward action implies the <<action-stop, Stop action>> when used, since
+the internally tracked `output` buffer is flushed when it is sent to Kafka.
 
 
 [[action-merge]]
 ===== Merge
+
+The `merge` action will only work when the log line is a JSON **object**. JSON
+arrays, or other arbitrary strings will not merge properly, and cause **all**
+subsequent actions for the given rule to be aborted.
 
 .Parameters
 |===
 | Key | Value
 
 | `json`
-| A YAMl map which will be merged with the JSON object deserialized from the matched log line.
+| A YAML map which will be merged with the JSON object deserialized from the matched log line.
 
 |===
 
-The `merge` action will only work when the log line is a JSON **object**. JSON
-arrays, or other arbitrary strings will not merge properly, and cause **all**
-subsequent actions for the given rule to be aborted.
+.hotdog.yml
+[source,yaml]
+----
+    actions:
+      - type: merge
+        json:
+          meta:
+            hotdog:
+              version: '{{version}}'
+              timestamp: '{{iso8601}}'
+----
 
 [[action-replace]]
 ===== Replace
+
+The `template` may utilize the <<variables, matched and built-in variables>> in
+order to generate a modified message. The output is only available to
+subsequent actions defined _after_ the `replace` action. Subsequent rules in
+the chain **will not** utilize this generated message.
 
 .Parameters
 |===
@@ -264,14 +279,23 @@ subsequent actions for the given rule to be aborted.
 
 |===
 
-The `template` may utilize the <<variables, matched and built-in variables>> in
-order to generate a modified message. The output is only available to
-subsequent actions defined _after_ the `replace` action. Subsequent rules in
-the chain **will not** utilize this generated message.
 
+.hotdog.yml
+[source,yaml]
+----
+  - regex: '^hello\s+(?P<name>\w+)?'
+    actions:
+      - type: replace
+        template: |
+          Why hello there {{name}}!
+----
 
 [[action-stop]]
 ===== Stop
+
+The `stop` action does nothing more than stop processing on the message. It is
+not particularly useful except in cases where `hotdog` should match on a
+message and then effectively discard it.
 
 [[development]]
 == Development
