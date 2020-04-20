@@ -61,14 +61,85 @@ Line 4 matches on:
 [[global]]
 === Global
 
-The `global` configuration block helps configure `hotdog` itself, namely the
-port it listens on, etc.
+The `global` configuration configures `hotdog` itself. The <<yml-listen,
+`listen`>>, <<yml-kafka, `kafka`>>, and <<yml-metrics, `metrics`>> keys are all
+required by default in order for `hotdog` to start properly.
 
+[[yml-listen]]
 ==== Listen
 
+The `global.listen` configuration is required and will determine on which
+address and port `hotdog` will listen. The <<yml-listen-tls, `tls`>>
+configuration key is required to function as well. When `tls` is left blank,
+`hotdog` will listen for syslog messages in plaintext on the specified `port`.
+
+.hotdog.yml
+[source,yaml]
+----
+global:
+  listen:
+    address: '127.0.0.1'
+    port: 1514
+    tls:
+----
+
+[[yml-listen-tls]]
 ===== TLS
 
-Certificate and Key files should be PEM encoded, and can be created with `certtool --generate-privkey --outfile ca-key.pem`
+The `global.listen.tls` configuration section can be used to enable
+syslog-over-TLS support from `hotdog`. Currently the only two valid keys for
+this section are `cert` and `key`, both of which should be absolute or relative
+paths to PEM-encoded files on disk.
+
+Certificate and Key files can be created with `certtool --generate-privkey
+--outfile ca-key.pem`
+
+
+[[yml-kafka]]
+==== Kafka
+
+A `global.kafka` configuration is required in order for `hotdog` to function
+properly. The two main configuration values are <<yml-kafka-conf, `conf`>> and <<yml-kafka-topic, `topic`>>.
+
+.hotdog.yml
+[source,yaml]
+----
+global:
+  kafka:
+    conf:
+      bootstrap.servers: 'localhost:9092'
+      client.id: 'hotdog'
+    topic: 'logs'
+----
+
+[[yml-kafka-conf]]
+===== Conf
+
+`global.kafka.conf` should contain a map of
+link:https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md[librdkafka configuration values].
+`hotdog` will expect every key _and_ value to be a String. These configuration
+values are passed right on to the underlying librdkafka client connection, so
+whatever librdkafka supports, `hotdog` supports!
+
+
+[[yml-metrics]]
+==== Metrics
+
+The `global.metrics` configuration tells `hotdog` where to send its own
+internal metrics  The only _currently_ supported metrics format is
+link:https://github.com/statsd/statsd[statsd].
+
+If your environment doesn't use statsd or you do not wish to report metrics,
+set the `statsd` value to an invalid host and port.
+
+.hotdog.yml
+[source,yaml]
+----
+global:
+  metrics:
+    statsd: 'localhost:8125'
+----
+
 
 [[rules]]
 === Rules
