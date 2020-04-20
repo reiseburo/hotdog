@@ -16,7 +16,7 @@ as quickly as possible.
 [source,bash]
 ----
 Hotdog 0.1.0
-R Tyler Croy <rtyler@brokenco.de
+R Tyler Croy <rtyler+hotdog@brokenco.de
 Forward syslog over to Kafka with ease
 
 USAGE:
@@ -145,19 +145,40 @@ global:
 === Rules
 
 Hotdog's rules define how it should handle and route the syslog messages it
-receives.
+receives. In the `hotdog.yml`, the rules must be defined as an array of maps.
 
-[[actions]]
-==== Actions
+Each rule is expected to a "matcher" (either <<rules-regex, `regex`>> or
+<<rules-jmespath, `jmespath`>>), the `field`  upon which the matcher should
+apply, and the <<actions, `actions`>> defining how the message should be
+handled.
 
-Actions determine what `hotdog` should do with the given log line when it
-receives it. 
+.hotdog.yml
+[source,yaml]
+----
+rules:
+  - jmespath: 'meta.topic'
+    field: msg
+    actions:
+      - type: forward
+        topic: '{{value}}'
 
-[[variables]]
-Some actions, such as <<action-replace>>, can perform variable substitutions on
-log line. The variables available are a combination of the built-in variables
-listed below, and whatever named groups exist in the `regex` field of the
-<<rules>>.
+  # Catch-all, send everything else to a "logs-unknown" topic
+  - regex: '.*'
+    field: msg
+    actions:
+      - type: forward
+        topic: 'logs-unknown'
+----
+
+[[rules-regex]]
+==== Matching with regular expressions
+
+The `regex` matcher instructs `hotdog` to match the `field` against the defined
+regular expression, which must follow the syntax of the
+link:https://docs.rs/regex/1.3.7/regex/#syntax[regex crate].
+
+The matcher supports named groups in the regular expression, which are then exposed to actions such as
+<<action-merge, merge>> and <<action-replace, replace>>.
 
 [CAUTION]
 ====
@@ -165,6 +186,25 @@ Named groups will **override** any built-in variables at the time of
 substitution, so be careful you are not naming your groups anything which might
 overlap with the built-in variable names
 ====
+
+[[rules-jmespath]]
+==== Matching with JMESPath
+
+`hotdog` also supports matching on JSON based messages with
+link:https://jmespath.org/[JMESPath] via the `jmespath` matcher. In order for a
+match, the log message must be a valid JSON object or array. The value of the
+match is also then exposed as a <<variables, variable>> named `value`, which
+can be used in actions such as <<action-merge, merge>> or <<action-replace,
+replace>>.
+
+
+[[variables]]
+==== Variables
+
+Some actions, such as <<action-replace>>, can perform variable substitutions on
+log line. The variables available are a combination of the built-in variables
+listed below, and whatever named groups exist in the `regex` field of the
+<<rules>>.
 
 [[builtin-vars]]
 .Built-in Variables
@@ -174,7 +214,21 @@ overlap with the built-in variable names
 | `msg`
 | The original log line message sent along from the syslog sender.
 
+| `version`
+| The version of `hotdog` which is processing the message.
+
+| `iso8601`
+| The ISO-8601 timestamp of when the message was processed.
+
 |===
+
+
+[[actions]]
+==== Actions
+
+Actions determine what `hotdog` should do with the given log line when it
+receives it.
+
 
 [[action-forward]]
 ===== Forward
@@ -231,7 +285,7 @@ On Linux systems it is easy to test with:
 [source,bash]
 ----
 logger --server 127.0.0.1  -T -P 1514 "hello world"
-logger --server 127.0.0.1  -T -P 1514 -f example.log 
+logger --server 127.0.0.1  -T -P 1514 -f example.log
 ----
 
 For TLS connections, you can use the `openssl` `s_client` command:

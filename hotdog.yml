@@ -18,15 +18,10 @@ global:
   metrics:
     statsd: 'localhost:8125'
 
-# Fields upon which rules can apply:
-#   - severity
-#   - facility
-#   - timestamp
-#   - hostname
-#   - appname
-#   - msg
 rules:
   - regex: '^hello\s+(?P<name>\w+)?'
+    # NOTE: field must currently be `msg`, applying rules on other fields is
+    # not yet supported
     field: msg
     actions:
       - type: replace
