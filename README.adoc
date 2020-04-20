@@ -332,3 +332,16 @@ For TLS connections, you can use the `openssl` `s_client` command:
 echo  '<13>1 2020-04-18T15:16:09.956153-07:00 coconut tyler - - [timeQuality tzKnown="1" isSynced="1" syncAccuracy="505061"] hello world' | openssl s_client -connect localhost:6514
 ----
 
+== Similar Projects
+
+`hotdog` was originally motivated by challenges with
+link:https://github.com/rsyslog/rsyslog[rsyslog], a desire for a simple
+configuration, and the need for built-in metrics.
+
+Some other similar projects which can be used to get logs into Kafka:
+
+* link:https://github.com/elastic/logstash[logstash]
+* link:https://github.com/syslog-ng/syslog-ng[syslog-ng]
+* link:https://github.com/timberio/vector[vector]
+* link:https://github.com/uswitch/syslogger[syslogger], which doesn't process
+  messages itself, but rather integrates with `rsyslog`.

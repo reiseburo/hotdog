@@ -55,7 +55,7 @@ fn main() -> Result<()> {
 
     let matches = App::new("Hotdog")
                           .version(env!("CARGO_PKG_VERSION"))
-                          .author("R Tyler Croy <rtyler@brokenco.de")
+                          .author("R Tyler Croy <rtyler+hotdog@brokenco.de")
                           .about("Forward syslog over to Kafka with ease")
                           .arg(Arg::with_name("config")
                                .short("c")
