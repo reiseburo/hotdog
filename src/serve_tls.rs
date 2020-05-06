@@ -12,6 +12,7 @@ use async_std::{
 };
 use async_tls::TlsAcceptor;
 use crate::read_logs;
+use crate::ConnectionState;
 use crate::settings::*;
 use dipstick::*;
 use log::*;
@@ -77,11 +78,13 @@ pub async fn accept_loop(addr: impl ToSocketAddrs,
         // we need to clone the current one.
         let acceptor = acceptor.clone();
         let mut stream = stream?;
-        let settings = settings.clone();
-        let metrics = metrics.clone();
+        let state = ConnectionState {
+            settings: settings.clone(),
+            metrics: metrics.clone(),
+        };
 
         task::spawn(async move {
-            handle_connection(&acceptor, &mut stream, settings, metrics).await;
+            handle_connection(&acceptor, &mut stream, state).await;
         });
     }
     Ok(())
@@ -90,9 +93,7 @@ pub async fn accept_loop(addr: impl ToSocketAddrs,
 /// The connection handling function.
 async fn handle_connection(acceptor: &TlsAcceptor,
     tcp_stream: &mut TcpStream,
-    settings: Arc<Settings>,
-    metrics: Arc<LockingOutput>) -> io::Result<()> {
-
+    state: ConnectionState) -> io::Result<()> {
     let peer_addr = tcp_stream.peer_addr()?;
     debug!("Accepted connection from: {}", peer_addr);
 
@@ -103,7 +104,7 @@ async fn handle_connection(acceptor: &TlsAcceptor,
     let tls_stream = handshake.await?;
     let reader = BufReader::new(tls_stream);
 
-    read_logs(reader, settings, metrics).await;
+    read_logs(reader, state).await;
     Ok(())
 }
 

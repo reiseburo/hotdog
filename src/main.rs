@@ -43,7 +43,16 @@ use settings::*;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 /**
- * RuleState exists to help curry state into merge/replacement functions
+ * ConnectionState carries the necessary types of state into new tasks for handling connections
+ */
+pub struct ConnectionState {
+    settings: Arc<Settings>,
+    metrics: Arc<LockingOutput>,
+}
+
+/**
+ * RuleState exists to help carry state into merge/replacement functions and exists only during the
+ * processing of rules
  */
 struct RuleState<'a> {
     variables: &'a HashMap<String, String>,
@@ -119,11 +128,13 @@ async fn accept_loop(addr: impl ToSocketAddrs, settings: Arc<Settings>, metrics:
         let stream = stream?;
         debug!("Accepting from: {}", stream.peer_addr()?);
         let reader = BufReader::new(stream);
-        let settings = settings.clone();
-        let metrics = metrics.clone();
+        let state = ConnectionState {
+            settings: settings.clone(),
+            metrics: metrics.clone(),
+        };
 
         task::spawn(async move {
-            read_logs(reader, settings, metrics).await;
+            read_logs(reader, state).await;
         });
     }
     Ok(())
@@ -134,9 +145,9 @@ async fn accept_loop(addr: impl ToSocketAddrs, settings: Arc<Settings>, metrics:
  *
  */
 
-pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(reader: BufReader<R>, settings: Arc<Settings>, metrics: Arc<LockingOutput>) -> Result<()> {
+pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(reader: BufReader<R>, state: ConnectionState) -> Result<()> {
     let mut lines = reader.lines();
-    let lines_count = metrics.counter("lines");
+    let lines_count = state.metrics.counter("lines");
 
     let hb = Handlebars::new();
 
@@ -166,7 +177,7 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(reader: BufR
         lines_count.count(1);
         let mut continue_rules = true;
 
-        for rule in settings.rules.iter() {
+        for rule in state.settings.rules.iter() {
             /*
              * If we have been told to stop processing rules, then it's time to bail on this log
              * message
