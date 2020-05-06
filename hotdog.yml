@@ -11,6 +11,9 @@ global:
     #port: 1514
     #tls:
   kafka:
+    # Maximum number of messages to buffer internally while waiting for Kafka
+    # responses
+    buffer: 1024
     conf:
       bootstrap.servers: '127.0.0.1:9092'
     # Default topic to log messages to that are not otherwise mapped

@@ -79,14 +79,6 @@ pub struct Rule {
     pub jmespath: String,
 }
 
-fn empty_regex() -> regex::Regex {
-    return regex::Regex::new("").unwrap();
-}
-
-fn empty_str() -> String {
-    return String::new();
-}
-
 
 #[derive(Debug, Deserialize, PartialEq)]
 #[serde(untagged)]
@@ -118,6 +110,8 @@ pub struct Listen {
 
 #[derive(Debug, Deserialize)]
 pub struct Kafka {
+    #[serde(default = "kafka_buffer_default")]
+    pub buffer: u64,
     pub conf: HashMap<String, String>,
     pub topic: String,
 }
@@ -140,6 +134,31 @@ pub struct Settings {
     pub rules: Vec<Rule>,
 }
 
+/*
+ * Default functions
+ */
+
+/**
+ * Return an empty regular expression
+ */
+fn empty_regex() -> regex::Regex {
+    return regex::Regex::new("").unwrap();
+}
+
+/**
+ * Allocate an return an empty string
+ */
+fn empty_str() -> String {
+    return String::new();
+}
+
+/**
+ * Return the default size used for the Kafka buffer
+ */
+fn kafka_buffer_default() -> u64 {
+    1024
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,5 +171,10 @@ mod tests {
     #[test]
     fn test_empty_str() {
         assert_eq!("".to_string(), empty_str());
+    }
+
+    #[test]
+    fn test_kafka_buffer_default() {
+        assert_eq!(1024, kafka_buffer_default());
     }
 }

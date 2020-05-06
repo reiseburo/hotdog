@@ -122,6 +122,22 @@ global:
     topic: 'logs'
 ----
 
+[[yml-kafka-buffer]]
+===== Buffer
+
+**Default:** `1024`
+
+`global.kafka.buffer` may contain a number indicating the size of the internal
+queue for sending messages to Kafka. This queue represents the number of
+internal messages `hotdog` will buffer during Kafka availability issues.
+
+[CAUTION]
+====
+If the internal Kafka queue has been filled up, new log lines received by
+`hotdog` will be discarded.
+====
+
+
 [[yml-kafka-conf]]
 ===== Conf
 
@@ -130,6 +146,12 @@ link:https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md[librdka
 `hotdog` will expect every key _and_ value to be a String. These configuration
 values are passed right on to the underlying librdkafka client connection, so
 whatever librdkafka supports, `hotdog` supports!
+
+[[yml-kafka-topic]]
+===== Topic
+
+`global.kafka.topic` may contain a string value which is to be considered the
+"default topic" for the <<action-forward, Forward action>>.
 
 
 [[yml-metrics]]
