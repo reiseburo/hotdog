@@ -1,25 +1,23 @@
+use crate::kafka::Kafka;
+use crate::settings::*;
+use crate::{read_logs, ConnectionState};
 /**
  * This module handles the necessary configuration to serve over TLS
  */
-
 use async_std::{
     io,
     io::BufReader,
-    net::{TcpStream, TcpListener, ToSocketAddrs},
+    net::{TcpListener, TcpStream, ToSocketAddrs},
     prelude::*,
     sync::Arc,
     task,
 };
 use async_tls::TlsAcceptor;
-use crate::{ConnectionState, read_logs};
-use crate::settings::*;
-use crate::kafka::Kafka;
 use dipstick::*;
 use log::*;
 use rustls::internal::pemfile::{certs, rsa_private_keys};
 use rustls::{Certificate, NoClientAuth, PrivateKey, ServerConfig};
 use std::path::Path;
-
 
 /// Load the passed certificates file
 fn load_certs(path: &Path) -> io::Result<Vec<Certificate>> {
@@ -53,22 +51,26 @@ fn load_tls_config(settings: &Settings) -> io::Result<ServerConfig> {
                 .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
 
             Ok(config)
-        },
+        }
         _ => {
             panic!("Attempted to load a TLS configuration despite TLS not being enabled");
         }
     }
 }
 
-pub async fn accept_loop(addr: impl ToSocketAddrs,
+pub async fn accept_loop(
+    addr: impl ToSocketAddrs,
     settings: Arc<Settings>,
-    metrics: Arc<LockingOutput>) -> Result<()> {
-
+    metrics: Arc<LockingOutput>,
+) -> Result<()> {
     let config = load_tls_config(&settings)?;
 
     let mut kafka = Kafka::new(settings.global.kafka.buffer);
 
-    if ! kafka.connect(&settings.global.kafka.conf, Some(settings.global.kafka.timeout_ms)) {
+    if !kafka.connect(
+        &settings.global.kafka.conf,
+        Some(settings.global.kafka.timeout_ms),
+    ) {
         error!("Cannot start hotdog without a workable broker connection");
         return Ok(());
     }
@@ -106,9 +108,11 @@ pub async fn accept_loop(addr: impl ToSocketAddrs,
 }
 
 /// The connection handling function.
-async fn handle_connection(acceptor: &TlsAcceptor,
+async fn handle_connection(
+    acceptor: &TlsAcceptor,
     tcp_stream: &mut TcpStream,
-    state: ConnectionState) -> io::Result<()> {
+    state: ConnectionState,
+) -> io::Result<()> {
     let peer_addr = tcp_stream.peer_addr()?;
     debug!("Accepted connection from: {}", peer_addr);
 
@@ -123,7 +127,6 @@ async fn handle_connection(acceptor: &TlsAcceptor,
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,8 +136,7 @@ mod tests {
         let cert_path = Path::new("./contrib/cert.pem");
         if let Ok(certs) = load_certs(&cert_path) {
             assert_eq!(1, certs.len());
-        }
-        else {
+        } else {
             assert!(false);
         }
     }
@@ -144,8 +146,7 @@ mod tests {
         let key_path = Path::new("./contrib/cert-key.pem");
         if let Ok(keys) = load_keys(&key_path) {
             assert_eq!(1, keys.len());
-        }
-        else {
+        } else {
             assert!(false);
         }
     }

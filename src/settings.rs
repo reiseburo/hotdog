@@ -2,7 +2,6 @@
  * The settings module contains the necessary structs and code to process the
  * hotdog.yml file format
  */
-
 use async_std::path::Path;
 use log::*;
 use regex;
@@ -12,7 +11,8 @@ use std::time::Duration;
 
 pub fn load(file: &str) -> Settings {
     let conf = load_configuration(file);
-    conf.try_into().expect("Failed to parse the configuration file")
+    conf.try_into()
+        .expect("Failed to parse the configuration file")
 }
 
 fn load_configuration(file: &str) -> config::Config {
@@ -58,15 +58,9 @@ pub enum Field {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum Action {
-    Forward {
-        topic: String,
-    },
-    Merge {
-        json: Value,
-    },
-    Replace {
-        template: String,
-    },
+    Forward { topic: String },
+    Merge { json: Value },
+    Replace { template: String },
     Stop,
 }
 
@@ -79,7 +73,6 @@ pub struct Rule {
     #[serde(default = "empty_str")]
     pub jmespath: String,
 }
-
 
 #[derive(Debug, Deserialize, PartialEq)]
 #[serde(untagged)]

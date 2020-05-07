@@ -2,11 +2,10 @@
  * The Kafka module contains all the tooling/code necessary for connecting hotdog to Kafka for
  * sending log lines along as Kafka messages
  */
-
-use crossbeam::channel::{Sender, Receiver, bounded};
+use crossbeam::channel::{bounded, Receiver, Sender};
 use log::*;
-use rdkafka::config::ClientConfig;
 use rdkafka::client::DefaultClientContext;
+use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{BaseConsumer, Consumer};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use std::collections::HashMap;
@@ -22,10 +21,7 @@ pub struct KafkaMessage {
 
 impl KafkaMessage {
     pub fn new(topic: String, msg: String) -> KafkaMessage {
-        KafkaMessage {
-            topic,
-            msg,
-        }
+        KafkaMessage { topic, msg }
     }
 }
 
@@ -62,21 +58,23 @@ impl Kafka {
      *
      * If timeout_ms is not specified, a default 10s timeout will be used
      */
-    pub fn connect(&mut self, rdkafka_conf: &HashMap<String, String>, timeout_ms: Option<Duration>) -> bool {
+    pub fn connect(
+        &mut self,
+        rdkafka_conf: &HashMap<String, String>,
+        timeout_ms: Option<Duration>,
+    ) -> bool {
         let mut rd_conf = ClientConfig::new();
         for (key, value) in rdkafka_conf.iter() {
             rd_conf.set(key, value);
         }
 
-        let consumer: BaseConsumer = rd_conf.create().expect("Creation of Kafka consumer (for metadata) failed");
+        let consumer: BaseConsumer = rd_conf
+            .create()
+            .expect("Creation of Kafka consumer (for metadata) failed");
 
         let timeout = match timeout_ms {
-            Some(ms) => {
-                ms
-            },
-            None => {
-                Duration::from_secs(10)
-            },
+            Some(ms) => ms,
+            None => Duration::from_secs(10),
         };
 
         if let Ok(metadata) = consumer.fetch_metadata(None, timeout) {
@@ -85,7 +83,11 @@ impl Kafka {
             debug!("  Metadata broker name: {}", metadata.orig_broker_name());
             debug!("  Metadata broker id: {}\n", metadata.orig_broker_id());
 
-            self.producer = Some(rd_conf.create().expect("Failed to create the Kafka producer!"));
+            self.producer = Some(
+                rd_conf
+                    .create()
+                    .expect("Failed to create the Kafka producer!"),
+            );
 
             return true;
         }
@@ -119,7 +121,9 @@ impl Kafka {
         // TODO: replace me with a select
         loop {
             if let Ok(kmsg) = self.rx.recv_timeout(timeout_ms) {
-                let record = FutureRecord::to(&kmsg.topic).payload(&kmsg.msg).key(&kmsg.msg);
+                let record = FutureRecord::to(&kmsg.topic)
+                    .payload(&kmsg.msg)
+                    .key(&kmsg.msg);
 
                 /*
                  * Intentionally setting the timeout_ms to -1 here so this blocks forever if the
@@ -133,7 +137,6 @@ impl Kafka {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,7 +147,10 @@ mod tests {
     #[test]
     fn test_connect_bad_cluster() {
         let mut conf = HashMap::<String, String>::new();
-        conf.insert(String::from("bootstrap.servers"), String::from("example.com:9092"));
+        conf.insert(
+            String::from("bootstrap.servers"),
+            String::from("example.com:9092"),
+        );
 
         let mut k = Kafka::new(0);
         assert_eq!(false, k.connect(&conf, Some(Duration::from_secs(1))));

@@ -4,7 +4,6 @@
  *
  * It is licensed under the MIT license
  */
-
 extern crate serde_json;
 
 use serde_json::{Map, Value};
