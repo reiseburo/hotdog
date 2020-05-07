@@ -8,6 +8,7 @@ use log::*;
 use regex;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::time::Duration;
 
 pub fn load(file: &str) -> Settings {
     let conf = load_configuration(file);
@@ -111,7 +112,9 @@ pub struct Listen {
 #[derive(Debug, Deserialize)]
 pub struct Kafka {
     #[serde(default = "kafka_buffer_default")]
-    pub buffer: u64,
+    pub buffer: usize,
+    #[serde(default = "kafka_timeout_default")]
+    pub timeout_ms: Duration,
     pub conf: HashMap<String, String>,
     pub topic: String,
 }
@@ -155,8 +158,12 @@ fn empty_str() -> String {
 /**
  * Return the default size used for the Kafka buffer
  */
-fn kafka_buffer_default() -> u64 {
+fn kafka_buffer_default() -> usize {
     1024
+}
+
+fn kafka_timeout_default() -> Duration {
+    Duration::from_secs(30)
 }
 
 #[cfg(test)]

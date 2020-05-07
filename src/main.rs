@@ -25,20 +25,21 @@ use async_std::{
 };
 use clap::{Arg, App};
 use chrono::prelude::*;
+use crossbeam::channel::Sender;
 use dipstick::*;
 use handlebars::Handlebars;
 use log::*;
-use rdkafka::config::ClientConfig;
-use rdkafka::producer::{FutureProducer, FutureRecord};
 use std::collections::HashMap;
 use syslog_rfc5424::parse_message;
 
+mod kafka;
 mod merge;
 mod rules;
 mod settings;
 mod serve_tls;
 
 use settings::*;
+use kafka::{Kafka, KafkaMessage};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -48,6 +49,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>
 pub struct ConnectionState {
     settings: Arc<Settings>,
     metrics: Arc<LockingOutput>,
+    sender: Sender<KafkaMessage>,
 }
 
 /**
@@ -119,6 +121,19 @@ fn main() -> Result<()> {
  * the connection_loop function
  */
 async fn accept_loop(addr: impl ToSocketAddrs, settings: Arc<Settings>, metrics: Arc<LockingOutput>) -> Result<()> {
+    let mut kafka = Kafka::new(settings.global.kafka.buffer);
+
+    if ! kafka.connect(&settings.global.kafka.conf, Some(settings.global.kafka.timeout_ms)) {
+        error!("Cannot start hotdog without a workable broker connection");
+        return Ok(());
+    }
+    let sender = kafka.get_sender();
+
+    task::spawn(async move {
+        debug!("starting sendloop");
+        kafka.sendloop();
+    });
+
     let listener = TcpListener::bind(addr).await?;
     let mut incoming = listener.incoming();
     let connection_count = metrics.counter("connections");
@@ -131,6 +146,7 @@ async fn accept_loop(addr: impl ToSocketAddrs, settings: Arc<Settings>, metrics:
         let state = ConnectionState {
             settings: settings.clone(),
             metrics: metrics.clone(),
+            sender: sender.clone(),
         };
 
         task::spawn(async move {
@@ -150,12 +166,6 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(reader: BufR
     let lines_count = state.metrics.counter("lines");
 
     let hb = Handlebars::new();
-
-    let mut rd_conf = ClientConfig::new();
-    for (key, value) in settings.global.kafka.conf.iter() {
-        rd_conf.set(key, value);
-    }
-    let producer: FutureProducer = rd_conf.create().expect("Failed to create Kafka producer!");
 
     while let Some(line) = lines.next().await {
         let line = line?;
@@ -240,7 +250,7 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(reader: BufR
                 continue;
             }
 
-            let state = RuleState {
+            let rule_state = RuleState {
                 hb: &hb,
                 variables: &hash,
             };
@@ -251,6 +261,17 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(reader: BufR
             for action in rule.actions.iter() {
                 match action {
                     Action::Forward { topic } => {
+
+                        /*
+                         * quick check on our internal queue, if it's full, skip all the processing
+                         * and move onto the next message
+                         */
+                        if state.sender.is_full() {
+                            error!("Internal Kafka queue is full! Dropping 1 message");
+                            continue_rules = false;
+                            break;
+                        }
+
                         /*
                          * If a custom output was never defined, just take the
                          * raw message and pass that along.
@@ -259,13 +280,21 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(reader: BufR
                             output = String::from(&msg.msg);
                         }
 
-                        if let Ok(actual) = hb.render_template(&topic, &hash) {
-                            debug!("Forwarding to the topic: `{}`", actual);
-                            send_to_kafka(output, &actual, &producer, &state).await;
+                        if let Ok(actual_topic) = hb.render_template(&topic, &hash) {
+                            debug!("Enqueueing for topic: `{}`", actual_topic);
                             /*
                              * `output` is consumed by send_to_kafka, so the rest of the rules
                              * should be skipped.
                              */
+                            let kmsg = KafkaMessage::new(actual_topic, output);
+                            match state.sender.try_send(kmsg) {
+                                Err(err) => {
+                                    error!("Failed to push a message onto our internal Kafka queue: {:?}", err);
+                                },
+                                Ok(_) => {
+                                    debug!("Message enqueued");
+                                },
+                            }
                             continue_rules = false;
                         }
                         else {
@@ -275,7 +304,7 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(reader: BufR
                     },
                     Action::Merge { json } => {
                         debug!("merging JSON content: {}", json);
-                        if let Ok(buffer) = perform_merge(&msg.msg, json, &state) {
+                        if let Ok(buffer) = perform_merge(&msg.msg, json, &rule_state) {
                             output = buffer;
                         }
                         else {
@@ -299,23 +328,6 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(reader: BufR
     Ok(())
 }
 
-/**
- * Send the given output message to the desired Kafka topic
- */
-async fn send_to_kafka(output: String,
-    topic: &str,
-    producer: &FutureProducer,
-    state: &RuleState<'_>) {
-
-    if let Ok(rendered) = state.hb.render_template(topic, &state.variables) {
-        debug!("action is forward {:?}", rendered);
-        let wait: i64 = 0;
-        producer.send(
-            FutureRecord::to(&rendered)
-                .payload(&output)
-                .key(&output), wait).await;
-    }
-}
 
 /**
  * perform_merge will generate the buffer resulting of the JSON merge

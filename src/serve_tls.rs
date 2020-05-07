@@ -11,9 +11,9 @@ use async_std::{
     task,
 };
 use async_tls::TlsAcceptor;
-use crate::read_logs;
-use crate::ConnectionState;
+use crate::{ConnectionState, read_logs};
 use crate::settings::*;
+use crate::kafka::Kafka;
 use dipstick::*;
 use log::*;
 use rustls::internal::pemfile::{certs, rsa_private_keys};
@@ -66,6 +66,19 @@ pub async fn accept_loop(addr: impl ToSocketAddrs,
 
     let config = load_tls_config(&settings)?;
 
+    let mut kafka = Kafka::new(settings.global.kafka.buffer);
+
+    if ! kafka.connect(&settings.global.kafka.conf, Some(settings.global.kafka.timeout_ms)) {
+        error!("Cannot start hotdog without a workable broker connection");
+        return Ok(());
+    }
+
+    let sender = kafka.get_sender();
+
+    task::spawn(async move {
+        debug!("starting sendloop");
+        kafka.sendloop();
+    });
     // We create one TLSAcceptor around a shared configuration.
     // Cloning the acceptor will not clone the configuration.
     let acceptor = TlsAcceptor::from(Arc::new(config));
@@ -78,9 +91,11 @@ pub async fn accept_loop(addr: impl ToSocketAddrs,
         // we need to clone the current one.
         let acceptor = acceptor.clone();
         let mut stream = stream?;
+
         let state = ConnectionState {
             settings: settings.clone(),
             metrics: metrics.clone(),
+            sender: sender.clone(),
         };
 
         task::spawn(async move {
