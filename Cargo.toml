@@ -18,6 +18,9 @@ syslog_rfc5424 = "~0.6.1"
 async-tls = "~0.7.0"
 rustls = "~0.17.0"
 
+# Requiredfor communciating with across internal queues
+crossbeam = "~0.7"
+
 # Needed for forwarding messages along to Kafka
 # including the SSL and SASL features to ensure that this can authenticate
 # against secure Kafka clusters, e.g. AWS MSK
