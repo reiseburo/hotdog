@@ -5,6 +5,7 @@ ifdef::env-github[]
 :caution-caption: :fire:
 :warning-caption: :warning:
 endif::[]
+:toc: macro
 
 = 🌭 Hotdog!
 
@@ -15,6 +16,8 @@ as quickly as possible.
 It listens for syslog messages over plaintext or TLS-encrupted TCP connection
 and depending on the defined <<rules>> it will route and even modify messages
 on their way into a <<yml-kafka, configured Kafka broker>>.
+
+toc::[]
 
 == Features
 
