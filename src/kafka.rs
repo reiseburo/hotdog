@@ -2,7 +2,12 @@
  * The Kafka module contains all the tooling/code necessary for connecting hotdog to Kafka for
  * sending log lines along as Kafka messages
  */
+
+use async_std::sync::Arc;
 use crossbeam::channel::{bounded, Receiver, Sender};
+use dipstick::*;
+use futures::*;
+use futures::executor::ThreadPool;
 use log::*;
 use rdkafka::client::DefaultClientContext;
 use rdkafka::config::ClientConfig;
@@ -35,6 +40,7 @@ pub struct Kafka {
      * ::new() and the .connect() function
      */
     producer: Option<FutureProducer<DefaultClientContext>>,
+    metrics: Option<Arc<LockingOutput>>,
     rx: Receiver<KafkaMessage>,
     tx: Sender<KafkaMessage>,
 }
@@ -43,10 +49,15 @@ impl Kafka {
     pub fn new(message_max: usize) -> Kafka {
         let (tx, rx) = bounded(message_max);
         Kafka {
+            metrics: None,
             producer: None,
             tx,
             rx,
         }
+    }
+
+    pub fn with_metrics(&mut self, metrics: Arc<LockingOutput>) {
+        self.metrics = Some(metrics);
     }
 
     /**
@@ -113,6 +124,7 @@ impl Kafka {
             panic!("Cannot enter the sendloop() without a valid producer");
         }
 
+        let pool = ThreadPool::new().unwrap();
         let producer = self.producer.as_ref().unwrap();
 
         // How long should we wait for an internal message to show up on our channel
@@ -131,7 +143,33 @@ impl Kafka {
                  * properly and cause messages to begin to be dropped, rather than buffering
                  * "forever" inside of hotdog
                  */
-                let _future = producer.send(record, -1 as i64);
+                if let Some(metrics) = &self.metrics {
+                    metrics.timer("kafka.producer.sending").time(|| {
+                        let m = metrics.clone();
+                        let timer = metrics.timer("kafka.producer.sent");
+                        let handle = timer.start();
+                        let fut = producer.send(record, -1 as i64)
+                            .then(move |res| {
+                                info!("write completed: {:?}", res);
+                                timer.stop(handle);
+                                future::ok::<bool, bool>(true)
+                            })
+                            /* Need to obliterate the Output type defined on then's TryFuture with
+                             * a map so this can be spawned off to the threadpool, which requires
+                             * Future<Output = ()>
+                             */
+                            .map(|_| ());
+                        /*
+                         * Resolve this future off in the threadpool so we can report metrics once
+                         * things are complete
+                         */
+                        pool.spawn_ok(fut);
+                    });
+                    metrics.counter("kafka.submitted").count(1)
+                }
+                else {
+                    let _future = producer.send(record, -1 as i64);
+                }
             }
         }
     }

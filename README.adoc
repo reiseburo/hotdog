@@ -348,6 +348,35 @@ The `stop` action does nothing more than stop processing on the message. It is
 not particularly useful except in cases where `hotdog` should match on a
 message and then effectively discard it.
 
+
+[[metrics]]
+== Metrics
+
+`hotdog` is designed to emit Statsd metrics to the statsd endpoint configured
+in the <<yml-metrics>> section. Each metric will be prefixed under `hotdog.*`.
+
+|===
+| Key | Description
+
+| `hotdog.connections`
+| Counter tracking the number of connections
+
+| `hotdog.lines`
+| Counter tracking the number of lines received by `hotdog`
+
+
+| `hotdog.kafka.submitted`
+| Counter tracking the number of messages submitted to Kafka
+
+| `hotdog.kafka.producer.sent`
+| Timer which tracks the amount of time it takes to actually write messages to Kafka
+
+| `hotdog.kafka.producer.sending`
+| Timer which tracks the amount of time `hotdog` spends trying to send something via librdkafka. Will indicate calls blocking on the asynchronous outbound queue filling up.
+
+|===
+
+
 [[development]]
 == Development
 

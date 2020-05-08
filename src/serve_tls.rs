@@ -75,6 +75,8 @@ pub async fn accept_loop(
         return Ok(());
     }
 
+    kafka.with_metrics(metrics.clone());
+
     let sender = kafka.get_sender();
 
     task::spawn(async move {
@@ -93,6 +95,7 @@ pub async fn accept_loop(
         // we need to clone the current one.
         let acceptor = acceptor.clone();
         let mut stream = stream?;
+        metrics.counter("connections").count(1);
 
         let state = ConnectionState {
             settings: settings.clone(),
