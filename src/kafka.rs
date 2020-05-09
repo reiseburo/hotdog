@@ -2,16 +2,16 @@
  * The Kafka module contains all the tooling/code necessary for connecting hotdog to Kafka for
  * sending log lines along as Kafka messages
  */
-
 use async_std::sync::Arc;
 use crossbeam::channel::{bounded, Receiver, Sender};
 use dipstick::*;
-use futures::*;
 use futures::executor::ThreadPool;
+use futures::*;
 use log::*;
 use rdkafka::client::DefaultClientContext;
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{BaseConsumer, Consumer};
+use rdkafka::error::{KafkaError, RDKafkaError};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use std::collections::HashMap;
 use std::time::Duration;
@@ -144,35 +144,73 @@ impl Kafka {
                  * "forever" inside of hotdog
                  */
                 if let Some(metrics) = &self.metrics {
-                    metrics.timer("kafka.producer.sending").time(|| {
-                        let m = metrics.clone();
-                        let timer = metrics.timer("kafka.producer.sent");
-                        let handle = timer.start();
-                        let fut = producer.send(record, -1 as i64)
-                            .then(move |res| {
-                                info!("write completed: {:?}", res);
-                                timer.stop(handle);
-                                future::ok::<bool, bool>(true)
-                            })
-                            /* Need to obliterate the Output type defined on then's TryFuture with
-                             * a map so this can be spawned off to the threadpool, which requires
-                             * Future<Output = ()>
-                             */
-                            .map(|_| ());
-                        /*
-                         * Resolve this future off in the threadpool so we can report metrics once
-                         * things are complete
+                    let m = metrics.clone();
+                    let timer = metrics.timer("kafka.producer.sent");
+                    let handle = timer.start();
+                    let fut = producer
+                        .send(record, -1 as i64)
+                        .then(move |res| {
+                            // unwrap the always-Ok resultto get the real DeliveryFuture result
+                            let delivery_result = res.unwrap();
+
+                            match delivery_result {
+                                Ok(_) => {
+                                    timer.stop(handle);
+                                    m.counter("kafka.submitted").count(1);
+                                }
+                                Err((err, msg)) => {
+                                    match err {
+                                        /*
+                                         * err_type will be one of RdKafkaError types defined:
+                                         * https://docs.rs/rdkafka/0.23.1/rdkafka/error/enum.RDKafkaError.html
+                                         */
+                                        KafkaError::MessageProduction(err_type) => {
+                                            error!(
+                                                "Failed to send message to Kafka due to: {}",
+                                                err_type
+                                            );
+                                            m.counter(&format!(
+                                                "kafka.producer.error.{}",
+                                                metric_name_for(err_type)
+                                            ))
+                                            .count(1);
+                                        }
+                                        _ => {
+                                            error!("Failed to send message to Kafka!");
+                                            m.counter("kafka.producer.error.generic").count(1);
+                                        }
+                                    }
+                                }
+                            }
+                            future::ok::<bool, bool>(true)
+                        })
+                        /* Need to obliterate the Output type defined on then's TryFuture with
+                         * a map so this can be spawned off to the threadpool, which requires
+                         * Future<Output = ()>
                          */
-                        pool.spawn_ok(fut);
-                    });
-                    metrics.counter("kafka.submitted").count(1)
-                }
-                else {
+                        .map(|_| ());
+                    /*
+                     * Resolve this future off in the threadpool so we can report metrics once
+                     * things are complete
+                     */
+                    pool.spawn_ok(fut);
+                } else {
                     let _future = producer.send(record, -1 as i64);
                 }
             }
         }
     }
+}
+
+/**
+ * A simple function for formatting the generated strings from RDKafkaError to be useful as metric
+ * names for systems like statsd
+ */
+fn metric_name_for(err: RDKafkaError) -> String {
+    if let Some(name) = err.to_string().to_lowercase().split(' ').next() {
+        return name.to_string();
+    }
+    return String::from("unknown");
 }
 
 #[cfg(test)]
@@ -192,5 +230,24 @@ mod tests {
 
         let mut k = Kafka::new(0);
         assert_eq!(false, k.connect(&conf, Some(Duration::from_secs(1))));
+    }
+
+    /**
+     * Tests for converting RDKafkaError strings into statsd suitable metric strings
+     */
+    #[test]
+    fn test_metric_name_1() {
+        assert_eq!(
+            "messagetimedout",
+            metric_name_for(RDKafkaError::MessageTimedOut)
+        );
+    }
+    #[test]
+    fn test_metric_name_2() {
+        assert_eq!("unknowntopic", metric_name_for(RDKafkaError::UnknownTopic));
+    }
+    #[test]
+    fn test_metric_name_3() {
+        assert_eq!("readonly", metric_name_for(RDKafkaError::ReadOnly));
     }
 }
