@@ -141,6 +141,7 @@ async fn accept_loop(
         error!("Cannot start hotdog without a workable broker connection");
         return Ok(());
     }
+    kafka.with_metrics(metrics.clone());
     let sender = kafka.get_sender();
 
     task::spawn(async move {
@@ -150,10 +151,8 @@ async fn accept_loop(
 
     let listener = TcpListener::bind(addr).await?;
     let mut incoming = listener.incoming();
-    let connection_count = metrics.counter("connections");
 
     while let Some(stream) = incoming.next().await {
-        connection_count.count(1);
         let stream = stream?;
         debug!("Accepting from: {}", stream.peer_addr()?);
         let reader = BufReader::new(stream);
@@ -165,6 +164,7 @@ async fn accept_loop(
 
         task::spawn(async move {
             read_logs(reader, state).await;
+            debug!("Connection dropped");
         });
     }
     Ok(())

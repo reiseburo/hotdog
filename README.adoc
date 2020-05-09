@@ -5,6 +5,7 @@ ifdef::env-github[]
 :caution-caption: :fire:
 :warning-caption: :warning:
 endif::[]
+:toc: macro
 
 = 🌭 Hotdog!
 
@@ -15,6 +16,8 @@ as quickly as possible.
 It listens for syslog messages over plaintext or TLS-encrupted TCP connection
 and depending on the defined <<rules>> it will route and even modify messages
 on their way into a <<yml-kafka, configured Kafka broker>>.
+
+toc::[]
 
 == Features
 
@@ -344,6 +347,35 @@ the chain **will not** utilize this generated message.
 The `stop` action does nothing more than stop processing on the message. It is
 not particularly useful except in cases where `hotdog` should match on a
 message and then effectively discard it.
+
+
+[[metrics]]
+== Metrics
+
+`hotdog` is designed to emit Statsd metrics to the statsd endpoint configured
+in the <<yml-metrics>> section. Each metric will be prefixed under `hotdog.*`.
+
+|===
+| Key | Description
+
+| `hotdog.connections`
+| Gauge tracking the number of connections
+
+| `hotdog.lines`
+| Counter tracking the number of lines received by `hotdog`
+
+
+| `hotdog.kafka.submitted`
+| Counter tracking the number of messages submitted to Kafka
+
+| `hotdog.kafka.producer.sent`
+| Timer which tracks the amount of time it takes to actually write messages to Kafka
+
+| `hotdog.kafka.producer.error.*`
+| Counters which count the number of different errors encountered while sending messages to Kafka. The types of possible metric names depends on the link:https://docs.rs/rdkafka/0.23.1/rdkafka/error/enum.RDKafkaError.html[RDKafkaError] enumeration from the underlying library.
+
+|===
+
 
 [[development]]
 == Development

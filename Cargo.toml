@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 # Base asynchronous runtime
 async-std = "~1.5.0"
-futures = "~0.3.4"
+futures = { version = "~0.3.4", features = ["thread-pool"] }
 
 # For parsing the syslog formatted messages
 syslog_rfc5424 = "~0.6.1"
@@ -56,4 +56,5 @@ dipstick = "~0.7.12"
 # Used for string replacements and other template based transformations
 handlebars = "~3.0.1"
 
+# Needed for time management
 chrono = "~0.4.11"

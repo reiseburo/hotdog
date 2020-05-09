@@ -13,6 +13,7 @@ use async_std::{
     task,
 };
 use async_tls::TlsAcceptor;
+use crossbeam::channel::bounded;
 use dipstick::*;
 use log::*;
 use rustls::internal::pemfile::{certs, rsa_private_keys};
@@ -75,6 +76,8 @@ pub async fn accept_loop(
         return Ok(());
     }
 
+    kafka.with_metrics(metrics.clone());
+
     let sender = kafka.get_sender();
 
     task::spawn(async move {
@@ -88,7 +91,31 @@ pub async fn accept_loop(
     let listener = TcpListener::bind(&addr).await?;
     let mut incoming = listener.incoming();
 
+    /*
+     * This crossbeam channel is only useful for keeping track of the connection counts
+     */
+    let (conn_tx, conn_rx) = bounded::<i64>(1);
+    let counter = metrics.gauge("connections");
+
+    /*
+     * TODO: A full thread for this seems like a waste
+     */
+    std::thread::spawn(move || {
+        let mut connections = 0;
+
+        loop {
+            if let Ok(count) = conn_rx.recv() {
+                connections = connections + count;
+                debug!("Connection count now {}", connections);
+                counter.value(connections);
+            }
+        }
+    });
+
     while let Some(stream) = incoming.next().await {
+        // Add a connection to the gauge
+        conn_tx.send(1).unwrap();
+
         // We use one acceptor per connection, so
         // we need to clone the current one.
         let acceptor = acceptor.clone();
@@ -100,8 +127,11 @@ pub async fn accept_loop(
             sender: sender.clone(),
         };
 
+        let ctx = conn_tx.clone();
+
         task::spawn(async move {
             handle_connection(&acceptor, &mut stream, state).await;
+            ctx.send(-1).unwrap();
         });
     }
     Ok(())
