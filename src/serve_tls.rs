@@ -105,6 +105,7 @@ pub async fn accept_loop(
 
         task::spawn(async move {
             handle_connection(&acceptor, &mut stream, state).await;
+            debug!("Connection dropped");
         });
     }
     Ok(())

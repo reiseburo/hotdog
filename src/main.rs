@@ -165,6 +165,7 @@ async fn accept_loop(
 
         task::spawn(async move {
             read_logs(reader, state).await;
+            debug!("Connection dropped");
         });
     }
     Ok(())

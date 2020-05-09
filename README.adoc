@@ -371,8 +371,8 @@ in the <<yml-metrics>> section. Each metric will be prefixed under `hotdog.*`.
 | `hotdog.kafka.producer.sent`
 | Timer which tracks the amount of time it takes to actually write messages to Kafka
 
-| `hotdog.kafka.producer.sending`
-| Timer which tracks the amount of time `hotdog` spends trying to send something via librdkafka. Will indicate calls blocking on the asynchronous outbound queue filling up.
+| `hotdog.kafka.producer.error.*`
+| Counters which count the number of different errors encountered while sending messages to Kafka. The types of possible metric names depends on the link:https://docs.rs/rdkafka/0.23.1/rdkafka/error/enum.RDKafkaError.html[RDKafkaError] enumeration from the underlying library.
 
 |===
 
