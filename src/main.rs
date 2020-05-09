@@ -153,7 +153,6 @@ async fn accept_loop(
     let mut incoming = listener.incoming();
 
     while let Some(stream) = incoming.next().await {
-        metrics.counter("connections").count(1);
         let stream = stream?;
         debug!("Accepting from: {}", stream.peer_addr()?);
         let reader = BufReader::new(stream);
