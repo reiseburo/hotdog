@@ -6,8 +6,6 @@ on:
     tags:
       - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
 
-name: Create Release
-
 jobs:
   build:
     name: Create Release
@@ -15,14 +13,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
-        
+
       - name: Create build
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-      
+
       - run: cargo build --release --all-features
-        
+
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -32,9 +30,9 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: Release ${{ github.ref }}
           draft: false
-      
+
       - name: Upload Release Asset
-        id: upload-release-asset 
+        id: upload-release-asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
