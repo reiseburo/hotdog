@@ -14,12 +14,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
+      - name: Prepare
+        run: sudo apt-get install -qy libsasl2-dev
+
       - name: Create build
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
 
-      - run: cargo build --release --all-features
+      - run: cargo build --release
 
       - name: Create Release
         id: create_release
