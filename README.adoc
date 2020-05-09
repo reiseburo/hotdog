@@ -359,7 +359,7 @@ in the <<yml-metrics>> section. Each metric will be prefixed under `hotdog.*`.
 | Key | Description
 
 | `hotdog.connections`
-| Counter tracking the number of connections
+| Gauge tracking the number of connections
 
 | `hotdog.lines`
 | Counter tracking the number of lines received by `hotdog`
