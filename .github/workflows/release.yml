@@ -42,5 +42,5 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./target/release/hotdog
-          asset_name: hotdog-${{ github.ref }}-amd64
+          asset_name: hotdog-amd64
           asset_content_type: application/octet-stream
