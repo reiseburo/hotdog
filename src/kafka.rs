@@ -75,8 +75,16 @@ impl Kafka {
         timeout_ms: Option<Duration>,
     ) -> bool {
         let mut rd_conf = ClientConfig::new();
+
         for (key, value) in rdkafka_conf.iter() {
             rd_conf.set(key, value);
+        }
+
+        /*
+         * Allow our brokers to be defined at runtime overriding the configuration
+         */
+        if let Ok(broker) = std::env::var("KAFKA_BROKER") {
+            rd_conf.set("bootstrap.servers", &broker);
         }
 
         let consumer: BaseConsumer = rd_conf
