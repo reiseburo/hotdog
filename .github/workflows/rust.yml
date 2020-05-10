@@ -9,12 +9,12 @@ on:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: opensuse-latest
 
     steps:
     - uses: actions/checkout@v2
     - name: Prepare
-      run: sudo apt-get install -qy libsasl2-dev
+      run: sudo zypper in -qy libsasl2-3
     - name: Build
       run: cargo build --verbose
     - name: Run tests
