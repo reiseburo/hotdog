@@ -46,6 +46,25 @@ OPTIONS:
     -t, --test <TEST_FILE>    Test a log file against the configured rules
 ----
 
+[[install]]
+== Installation
+
+Hotdog can be installed by grabbing a
+linK:https://github.com/reiseburo/hotdog/releases[released binary].
+The system which will run `hotdog` *must* have `libsasl2` installed, e.g.:
+
+.Ubuntu
+[source,bash]
+----
+sudo apt-get install libsasl2-2
+----
+
+.openSUSE
+[source,bash]
+----
+sudo zypper install libsasl2-3
+----
+
 [[configuration]]
 == Configuration
 
