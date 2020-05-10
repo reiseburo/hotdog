@@ -1,6 +1,6 @@
 [package]
 name = "hotdog"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["R. Tyler Croy <rtyler+hotdog@brokenco.de>"]
 edition = "2018"
 

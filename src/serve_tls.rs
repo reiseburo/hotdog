@@ -16,7 +16,7 @@ use async_tls::TlsAcceptor;
 use crossbeam::channel::bounded;
 use dipstick::*;
 use log::*;
-use rustls::internal::pemfile::{certs, rsa_private_keys};
+use rustls::internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use rustls::{Certificate, NoClientAuth, PrivateKey, ServerConfig};
 use std::path::Path;
 
@@ -27,11 +27,24 @@ fn load_certs(path: &Path) -> io::Result<Vec<Certificate>> {
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid cert"))
 }
 
-/// Load the passed keys file
+/**
+ * Loads the keys file passed in, whether it is an RSA or PKCS8 formatted key
+ */
 fn load_keys(path: &Path) -> io::Result<Vec<PrivateKey>> {
     debug!("Loading TLS keys from: {}", path.display());
-    rsa_private_keys(&mut std::io::BufReader::new(std::fs::File::open(path)?))
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"))
+
+    let result = rsa_private_keys(&mut std::io::BufReader::new(std::fs::File::open(path)?))
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"));
+
+    if let Ok(keys) = result {
+        if keys.len() == 0 {
+            debug!("Failed to load key as RSA, trying PKCS8");
+            return pkcs8_private_keys(&mut std::io::BufReader::new(std::fs::File::open(path)?))
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"));
+        }
+        return Ok(keys);
+    }
+    return result;
 }
 
 /// Configure the server using rusttls
@@ -43,6 +56,10 @@ fn load_tls_config(settings: &Settings) -> io::Result<ServerConfig> {
         TlsType::CertAndKey { cert, key } => {
             let certs = load_certs(cert.as_path())?;
             let mut keys = load_keys(key.as_path())?;
+
+            if keys.len() <= 0  {
+                panic!("TLS key could not be properly loaded! This is fatal!");
+            }
 
             // we don't use client authentication
             let mut config = ServerConfig::new(NoClientAuth::new());
@@ -172,8 +189,18 @@ mod tests {
     }
 
     #[test]
-    fn test_load_keys() {
+    fn test_load_keys_rsa() {
         let key_path = Path::new("./contrib/cert-key.pem");
+        if let Ok(keys) = load_keys(&key_path) {
+            assert_eq!(1, keys.len());
+        } else {
+            assert!(false);
+        }
+    }
+
+    #[test]
+    fn test_load_keys_pkcs8() {
+        let key_path = Path::new("./contrib/pkcs8-key.pem");
         if let Ok(keys) = load_keys(&key_path) {
             assert_eq!(1, keys.len());
         } else {
