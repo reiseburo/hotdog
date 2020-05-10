@@ -126,6 +126,19 @@ paths to PEM-encoded files on disk.
 Certificate and Key files can be created with `certtool --generate-privkey
 --outfile ca-key.pem`
 
+.hotdog.yml
+[source,yaml]
+----
+global:
+  listen:
+    tls:
+      cert: './a/path.crt'
+      key: './a/path.key'
+      # ca is optional and when provided will ensure certificate validation
+      # happens
+      ca: './a/ca.crt'
+----
+
 
 [[yml-kafka]]
 ==== Kafka

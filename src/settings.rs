@@ -86,6 +86,7 @@ pub enum TlsType {
     CertAndKey {
         cert: std::path::PathBuf,
         key: std::path::PathBuf,
+        ca: Option<std::path::PathBuf>,
     },
 }
 

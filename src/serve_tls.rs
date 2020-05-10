@@ -17,7 +17,14 @@ use crossbeam::channel::bounded;
 use dipstick::*;
 use log::*;
 use rustls::internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
-use rustls::{Certificate, NoClientAuth, PrivateKey, ServerConfig};
+use rustls::{
+    Certificate,
+    AllowAnyAnonymousOrAuthenticatedClient,
+    NoClientAuth,
+    PrivateKey,
+    RootCertStore,
+    ServerConfig
+};
 use std::path::Path;
 
 /// Load the passed certificates file
@@ -53,7 +60,7 @@ fn load_keys(path: &Path) -> io::Result<Vec<PrivateKey>> {
 /// A TLS server needs a certificate and a fitting private key
 fn load_tls_config(settings: &Settings) -> io::Result<ServerConfig> {
     match &settings.global.listen.tls {
-        TlsType::CertAndKey { cert, key } => {
+        TlsType::CertAndKey { cert, key, ca } => {
             let certs = load_certs(cert.as_path())?;
             let mut keys = load_keys(key.as_path())?;
 
@@ -61,8 +68,17 @@ fn load_tls_config(settings: &Settings) -> io::Result<ServerConfig> {
                 panic!("TLS key could not be properly loaded! This is fatal!");
             }
 
+            let mut verifier = NoClientAuth::new();
+
+            if ca.is_some() {
+                let ca_path = ca.as_ref().unwrap();
+                let mut store = RootCertStore::empty();
+                store.add_pem_file(&mut std::io::BufReader::new(std::fs::File::open(ca_path.as_path())?));
+                verifier = AllowAnyAnonymousOrAuthenticatedClient::new(store);
+            }
+
             // we don't use client authentication
-            let mut config = ServerConfig::new(NoClientAuth::new());
+            let mut config = ServerConfig::new(verifier);
             config
                 // set this server to use one cert together with the loaded private key
                 .set_single_cert(certs, keys.remove(0))

@@ -108,7 +108,7 @@ fn main() -> Result<()> {
     info!("Listening on: {}", addr);
 
     match &settings.global.listen.tls {
-        TlsType::CertAndKey { cert: _, key: _ } => {
+        TlsType::CertAndKey { cert: _, key: _, ca: _ } => {
             info!("Serving in TLS mode");
             task::block_on(crate::serve_tls::accept_loop(
                 addr,
