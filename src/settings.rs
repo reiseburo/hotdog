@@ -67,7 +67,7 @@ pub enum Action {
 pub struct Rule {
     pub field: Field,
     pub actions: Vec<Action>,
-    #[serde(with = "serde_regex")]
+    #[serde(with = "serde_regex", default = "default_none")]
     pub regex: Option<regex::Regex>,
     #[serde(default = "empty_str")]
     pub jmespath: String,
@@ -152,9 +152,18 @@ fn kafka_timeout_default() -> Duration {
     Duration::from_secs(30)
 }
 
+fn default_none<T>() -> Option<T> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_load_example_config() {
+        load("hotdog.yml");
+    }
 
     #[test]
     fn test_default_tls() {
