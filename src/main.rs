@@ -12,6 +12,7 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_regex;
+#[cfg(test)]
 #[macro_use]
 extern crate serde_json;
 extern crate syslog_rfc5424;
@@ -91,7 +92,7 @@ fn main() -> Result<()> {
     let settings = Arc::new(settings::load(settings_file));
 
     if let Some(test_file) = matches.value_of("test") {
-        return task::block_on(rules::test_rules(&test_file, settings.clone()));
+        return task::block_on(rules::test_rules(&test_file, settings));
     }
 
     let metrics = Arc::new(
@@ -108,17 +109,21 @@ fn main() -> Result<()> {
     info!("Listening on: {}", addr);
 
     match &settings.global.listen.tls {
-        TlsType::CertAndKey { cert: _, key: _, ca: _ } => {
+        TlsType::CertAndKey {
+            cert: _,
+            key: _,
+            ca: _,
+        } => {
             info!("Serving in TLS mode");
             task::block_on(crate::serve_tls::accept_loop(
                 addr,
                 settings.clone(),
-                metrics.clone(),
+                metrics,
             ))
         }
         _ => {
             info!("Serving in plaintext mode");
-            task::block_on(accept_loop(addr, settings.clone(), metrics.clone()))
+            task::block_on(accept_loop(addr, settings.clone(), metrics))
         }
     }
 }
@@ -163,7 +168,9 @@ async fn accept_loop(
         };
 
         task::spawn(async move {
-            read_logs(reader, state).await;
+            if let Err(e) = read_logs(reader, state).await {
+                error!("Failed to read logs: {:?}", e);
+            }
             debug!("Connection dropped");
         });
     }
@@ -190,11 +197,8 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
 
         let parsed = parse_message(line);
 
-        match &parsed {
-            Err(e) => {
-                error!("failed to parse message: {}", e);
-            }
-            _ => {}
+        if let Err(e) = &parsed {
+            error!("failed to parse message: {}", e);
         }
 
         /*
@@ -226,7 +230,7 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
                     /*
                      * Check to see if we have a jmespath first
                      */
-                    if rule.jmespath.len() > 0 {
+                    if !rule.jmespath.is_empty() {
                         let expr = jmespath::compile(&rule.jmespath).unwrap();
                         if let Ok(data) = jmespath::Variable::from_json(&msg.msg) {
                             // Search the data with the compiled expression
@@ -242,20 +246,22 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
                                 }
                             }
                         }
-                    } else if let Some(captures) = rule.regex.captures(&msg.msg) {
-                        rule_matches = true;
+                    } else if let Some(regex) = &rule.regex {
+                        if let Some(captures) = regex.captures(&msg.msg) {
+                            rule_matches = true;
 
-                        for name in rule.regex.capture_names() {
-                            if let Some(name) = name {
-                                if let Some(value) = captures.name(name) {
-                                    hash.insert(name.to_string(), String::from(value.as_str()));
+                            for name in regex.capture_names() {
+                                if let Some(name) = name {
+                                    if let Some(value) = captures.name(name) {
+                                        hash.insert(name.to_string(), String::from(value.as_str()));
+                                    }
                                 }
                             }
                         }
                     }
                 }
                 _ => {
-                    debug!("unhandled `field` for this rule: {}", rule.regex);
+                    warn!("unhandled `field` for rule");
                 }
             }
 
@@ -291,7 +297,7 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
                          * If a custom output was never defined, just take the
                          * raw message and pass that along.
                          */
-                        if output.len() == 0 {
+                        if output.is_empty() {
                             output = String::from(&msg.msg);
                         }
 
@@ -363,7 +369,7 @@ fn perform_merge(
             if let Ok(rendered) = state.hb.render_template(&output, &state.variables) {
                 return Ok(rendered);
             }
-            return Ok(output);
+            Ok(output)
         } else {
             Err("Failed to render".to_string())
         }
@@ -372,33 +378,6 @@ fn perform_merge(
 
         Err("Not JSON".to_string())
     }
-}
-
-/**
- * merge_and_render will take care of merging the two values and manage the
- * rendering of variable substitutions
- */
-fn merge_and_render<'a>(
-    mut left: &mut serde_json::Value,
-    right: &serde_json::Value,
-    state: &RuleState<'a>,
-) -> String {
-    merge::merge(&mut left, &right);
-
-    let output = serde_json::to_string(&left).unwrap();
-
-    /*
-     * This is a bit inefficient, but until I can figure out a better way
-     * to render the variables that are being substituted in a merged JSON
-     * object, hotdog will just render the JSON object and then render it
-     * as a template.
-     *
-     * what could possibly go wrong
-     */
-    if let Ok(rendered) = state.hb.render_template(&output, &state.variables) {
-        return rendered;
-    }
-    return output;
 }
 
 #[cfg(test)]
@@ -489,23 +468,5 @@ mod tests {
         let to_merge = json!({"hello" : "{{name}}"});
         let output = perform_merge("{}", &to_merge, &state);
         assert_eq!(output, Ok("{\"hello\":\"world\"}".to_string()));
-    }
-
-    #[test]
-    fn test_merge_and_render() {
-        let mut hash = HashMap::<String, String>::new();
-        hash.insert("value".to_string(), "hi".to_string());
-
-        let hb = Handlebars::new();
-        let state = RuleState {
-            hb: &hb,
-            variables: &hash,
-        };
-
-        let mut origin = json!({"rust" : true});
-        let config = json!({"test" : "{{value}}"});
-
-        let buf = merge_and_render(&mut origin, &config, &state);
-        assert_eq!(buf, r#"{"rust":true,"test":"hi"}"#);
     }
 }

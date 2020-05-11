@@ -113,7 +113,7 @@ impl Kafka {
 
         warn!("Failed to connect to a Kafka broker");
 
-        return false;
+        false
     }
 
     /**
@@ -167,7 +167,7 @@ impl Kafka {
                                     timer.stop(handle);
                                     m.counter("kafka.submitted").count(1);
                                 }
-                                Err((err, msg)) => {
+                                Err((err, _)) => {
                                     match err {
                                         /*
                                          * err_type will be one of RdKafkaError types defined:
@@ -219,7 +219,7 @@ fn metric_name_for(err: RDKafkaError) -> String {
     if let Some(name) = err.to_string().to_lowercase().split(' ').next() {
         return name.to_string();
     }
-    return String::from("unknown");
+    String::from("unknown")
 }
 
 #[cfg(test)]

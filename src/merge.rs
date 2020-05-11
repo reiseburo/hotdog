@@ -1,11 +1,13 @@
+/*
+ * Disabling this lint because I don't want to fix it in this imported code
+ */
+#![allow(clippy::clone_double_ref)]
 /**
  * This module is from the crate json_value_merge
  *  <https://github.com/jmfiaschi/json_value_merge/>
  *
  * It is licensed under the MIT license
  */
-extern crate serde_json;
-
 use serde_json::{Map, Value};
 
 /// Trait used to merge Json Values
@@ -85,8 +87,9 @@ pub fn merge(a: &mut Value, b: &Value) {
     }
 }
 
-fn merge_in(json_value: &mut Value, json_pointer: &str, new_json_value: Value) -> () {
-    let mut fields: Vec<&str> = json_pointer.split("/").skip(1).collect();
+fn merge_in(json_value: &mut Value, json_pointer: &str, new_json_value: Value) {
+    let mut fields: Vec<&str> = json_pointer.split('/').skip(1).collect();
+    //let first_field = fields[0].clone();
     let first_field = fields[0].clone();
     fields.remove(0);
     let next_fields = fields;
@@ -100,7 +103,7 @@ fn merge_in(json_value: &mut Value, json_pointer: &str, new_json_value: Value) -
     match json_value.pointer_mut(format!("/{}", first_field).as_str()) {
         // Find the field and the json_value_targeted.
         Some(json_targeted) => {
-            if 0 < next_fields.len() {
+            if !next_fields.is_empty() {
                 merge_in(
                     json_targeted,
                     format!("/{}", next_fields.join("/")).as_ref(),

@@ -18,12 +18,8 @@ use dipstick::*;
 use log::*;
 use rustls::internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use rustls::{
-    Certificate,
-    AllowAnyAnonymousOrAuthenticatedClient,
-    NoClientAuth,
-    PrivateKey,
-    RootCertStore,
-    ServerConfig
+    AllowAnyAnonymousOrAuthenticatedClient, Certificate, NoClientAuth, PrivateKey, RootCertStore,
+    ServerConfig,
 };
 use std::path::Path;
 
@@ -44,14 +40,14 @@ fn load_keys(path: &Path) -> io::Result<Vec<PrivateKey>> {
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"));
 
     if let Ok(keys) = result {
-        if keys.len() == 0 {
+        if keys.is_empty() {
             debug!("Failed to load key as RSA, trying PKCS8");
             return pkcs8_private_keys(&mut std::io::BufReader::new(std::fs::File::open(path)?))
                 .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"));
         }
         return Ok(keys);
     }
-    return result;
+    result
 }
 
 /// Configure the server using rusttls
@@ -64,18 +60,22 @@ fn load_tls_config(settings: &Settings) -> io::Result<ServerConfig> {
             let certs = load_certs(cert.as_path())?;
             let mut keys = load_keys(key.as_path())?;
 
-            if keys.len() <= 0  {
+            if keys.is_empty() {
                 panic!("TLS key could not be properly loaded! This is fatal!");
             }
 
-            let mut verifier = NoClientAuth::new();
-
-            if ca.is_some() {
+            let verifier = if ca.is_some() {
                 let ca_path = ca.as_ref().unwrap();
                 let mut store = RootCertStore::empty();
-                store.add_pem_file(&mut std::io::BufReader::new(std::fs::File::open(ca_path.as_path())?));
-                verifier = AllowAnyAnonymousOrAuthenticatedClient::new(store);
-            }
+                if let Err(e) = store.add_pem_file(&mut std::io::BufReader::new(
+                    std::fs::File::open(ca_path.as_path())?,
+                )) {
+                    error!("Failed to add the CA properly, certificate verification may not work as expected: {:?}", e);
+                }
+                AllowAnyAnonymousOrAuthenticatedClient::new(store)
+            } else {
+                NoClientAuth::new()
+            };
 
             // we don't use client authentication
             let mut config = ServerConfig::new(verifier);
@@ -138,7 +138,7 @@ pub async fn accept_loop(
 
         loop {
             if let Ok(count) = conn_rx.recv() {
-                connections = connections + count;
+                connections += count;
                 debug!("Connection count now {}", connections);
                 counter.value(connections);
             }
@@ -163,7 +163,9 @@ pub async fn accept_loop(
         let ctx = conn_tx.clone();
 
         task::spawn(async move {
-            handle_connection(&acceptor, &mut stream, state).await;
+            if let Err(e) = handle_connection(&acceptor, &mut stream, state).await {
+                error!("Failed to handle the connection properly: {:?}", e);
+            }
             ctx.send(-1).unwrap();
         });
     }
@@ -186,7 +188,9 @@ async fn handle_connection(
     let tls_stream = handshake.await?;
     let reader = BufReader::new(tls_stream);
 
-    read_logs(reader, state).await;
+    if let Err(e) = read_logs(reader, state).await {
+        error!("Failed to read logs properly: {:?}", e);
+    }
     Ok(())
 }
 
