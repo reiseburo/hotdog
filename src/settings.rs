@@ -4,7 +4,6 @@
  */
 use async_std::path::Path;
 use log::*;
-use regex;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -41,7 +40,7 @@ fn load_configuration(file: &str) -> config::Config {
     let _port: u64 = conf
         .get("global.listen.port")
         .expect("Configuration had no `global.listen.port` setting");
-    return conf;
+    conf
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,8 +67,8 @@ pub enum Action {
 pub struct Rule {
     pub field: Field,
     pub actions: Vec<Action>,
-    #[serde(with = "serde_regex", default = "empty_regex")]
-    pub regex: regex::Regex,
+    #[serde(with = "serde_regex")]
+    pub regex: Option<regex::Regex>,
     #[serde(default = "empty_str")]
     pub jmespath: String,
 }
@@ -136,17 +135,10 @@ pub struct Settings {
  */
 
 /**
- * Return an empty regular expression
- */
-fn empty_regex() -> regex::Regex {
-    return regex::Regex::new("").unwrap();
-}
-
-/**
  * Allocate an return an empty string
  */
 fn empty_str() -> String {
-    return String::new();
+    String::new()
 }
 
 /**

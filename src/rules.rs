@@ -19,31 +19,30 @@ pub async fn test_rules(file_name: &str, settings: Arc<Settings>) -> Result<()> 
     while let Some(line) = lines.next().await {
         let line = line?;
         debug!("Testing the line: {}", line);
-        number = number + 1;
+        number += 1;
         let mut matches: Vec<&str> = vec![];
 
         for rule in settings.rules.iter() {
-            match rule.field {
-                Field::Msg => {
-                    if rule.jmespath.len() > 0 {
-                        let expr = jmespath::compile(&rule.jmespath).unwrap();
-                        if let Ok(data) = jmespath::Variable::from_json(&line) {
-                            // Search the data with the compiled expression
-                            if let Ok(result) = expr.search(data) {
-                                if !result.is_null() {
-                                    matches.push(&rule.jmespath);
-                                }
+            if let Field::Msg = rule.field {
+                if !rule.jmespath.is_empty() {
+                    let expr = jmespath::compile(&rule.jmespath).unwrap();
+                    if let Ok(data) = jmespath::Variable::from_json(&line) {
+                        // Search the data with the compiled expression
+                        if let Ok(result) = expr.search(data) {
+                            if !result.is_null() {
+                                matches.push(&rule.jmespath);
                             }
                         }
-                    } else if let Some(_captures) = rule.regex.captures(&line) {
-                        matches.push(&rule.regex.as_str());
+                    }
+                } else if let Some(regex) = &rule.regex {
+                    if let Some(_captures) = regex.captures(&line) {
+                        matches.push(&regex.as_str());
                     }
                 }
-                _ => {}
             }
         }
 
-        if matches.len() > 0 {
+        if !matches.is_empty() {
             println!("Line {} matches on:", number);
             for m in matches.iter() {
                 println!("\t - {}", m);
