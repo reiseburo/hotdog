@@ -141,9 +141,10 @@ impl Kafka {
         // TODO: replace me with a select
         loop {
             if let Ok(kmsg) = self.rx.recv_timeout(timeout_ms) {
-                let record = FutureRecord::to(&kmsg.topic)
-                    .payload(&kmsg.msg)
-                    .key(&kmsg.msg);
+                /* Note, setting the `K` (key) type on FutureRecord to a string
+                 * even though we're explicitly not sending a key
+                 */
+                let record = FutureRecord::<String, String>::to(&kmsg.topic).payload(&kmsg.msg);
 
                 /*
                  * Intentionally setting the timeout_ms to -1 here so this blocks forever if the
