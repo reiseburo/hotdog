@@ -166,6 +166,7 @@ impl Kafka {
                                 Ok(_) => {
                                     timer.stop(handle);
                                     m.counter("kafka.submitted").count(1);
+                                    m.counter(&format!("kafka.submitted.{}", &kmsg.topic)).count(1);
                                 }
                                 Err((err, _)) => {
                                     match err {
