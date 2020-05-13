@@ -406,6 +406,25 @@ in the <<yml-metrics>> section. Each metric will be prefixed under `hotdog.*`.
 | `hotdog.kafka.producer.error.*`
 | Counters which count the number of different errors encountered while sending messages to Kafka. The types of possible metric names depends on the link:https://docs.rs/rdkafka/0.23.1/rdkafka/error/enum.RDKafkaError.html[RDKafkaError] enumeration from the underlying library.
 
+| `hotdog.error.log_parse`
+| Number of the log lines received which could not be parsed as link:https://tools.ietf.org/html/rfc5424[RFCC 5424] syslog lines.
+
+| `hotdog.error.full_internal_queue`
+| Count tracking the number of log lines which were *dropped* due to a full internal queue, Typically indicates an issue between `hotdog` and the Kafka brokers.
+
+| `hotdog.error.internal_push_failed`
+| Number of lines dropped because the could not be sent into the internal queue.
+
+| `hotdog.error.topic_parse_failed`
+| Number of lines dropped because the configured dynamic topic could not be parsed properly (typically indicates a configuration error).
+
+| `hotdog.error.merge_of_invalid_json`
+| Count of lines which could not have a merge action applied as configured due to a configuration error
+
+
+| `hotdog.error.merge.merge_target_not_json`
+| Count of lines received for a merge action which were not JSON, and therefore could not be merged.
+
 |===
 
 

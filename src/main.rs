@@ -60,6 +60,7 @@ pub struct ConnectionState {
 struct RuleState<'a> {
     variables: &'a HashMap<String, String>,
     hb: &'a handlebars::Handlebars<'a>,
+    metrics: Arc<LockingOutput>,
 }
 
 fn main() -> Result<()> {
@@ -198,6 +199,7 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
         let parsed = parse_message(line);
 
         if let Err(e) = &parsed {
+            state.metrics.counter("error.log_parse").count(1);
             error!("failed to parse message: {}", e);
         }
 
@@ -275,6 +277,7 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
             let rule_state = RuleState {
                 hb: &hb,
                 variables: &hash,
+                metrics: state.metrics.clone(),
             };
 
             /*
@@ -289,6 +292,7 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
                          */
                         if state.sender.is_full() {
                             error!("Internal Kafka queue is full! Dropping 1 message");
+                            state.metrics.counter("error.full_internal_queue").count(1);
                             continue_rules = false;
                             break;
                         }
@@ -311,6 +315,7 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
                             match state.sender.try_send(kmsg) {
                                 Err(err) => {
                                     error!("Failed to push a message onto our internal Kafka queue: {:?}", err);
+                                    state.metrics.counter("error.internal_push_failed").count(1);
                                 }
                                 Ok(_) => {
                                     debug!("Message enqueued");
@@ -319,6 +324,7 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
                             continue_rules = false;
                         } else {
                             error!("Failed to process the configured topic: `{}`", topic);
+                            state.metrics.counter("error.topic_parse_failed").count(1);
                         }
                         break;
                     }
@@ -360,6 +366,7 @@ fn perform_merge(
      */
     if !to_merge.is_object() {
         error!("Merge requested was not a JSON object: {}", to_merge);
+        state.metrics.counter("error.merge_of_invalid_json").count(1);
         return Ok(buffer.to_string());
     }
 
@@ -375,7 +382,7 @@ fn perform_merge(
         }
     } else {
         error!("Failed to parse as JSON, stopping actions: {}", buffer);
-
+        state.metrics.counter("error.merge_target_not_json").count(1);
         Err("Not JSON".to_string())
     }
 }
@@ -384,14 +391,31 @@ fn perform_merge(
 mod tests {
     use super::*;
 
+    /**
+     * Generating a test RuleState for consistent states in test
+     */
+    fn rule_state<'a>(hb : &'a handlebars::Handlebars<'a>,
+                hash : &'a HashMap<String, String>) -> RuleState<'a> {
+
+        let metrics = Arc::new(
+            Statsd::send_to("example.com:8125")
+                .expect("Failed to create Statsd recorder")
+                .named("test")
+                .metrics(),
+        );
+
+        RuleState {
+            hb: &hb,
+            variables: &hash,
+            metrics: metrics,
+        }
+    }
+
     #[test]
     fn merge_with_empty() {
         let hb = Handlebars::new();
         let hash = HashMap::<String, String>::new();
-        let state = RuleState {
-            hb: &hb,
-            variables: &hash,
-        };
+        let state = rule_state(&hb, &hash);
 
         let to_merge = json!({});
         let output = perform_merge("{}", &to_merge, &state);
@@ -405,10 +429,7 @@ mod tests {
     fn merge_with_non_object() -> std::result::Result<(), String> {
         let hb = Handlebars::new();
         let hash = HashMap::<String, String>::new();
-        let state = RuleState {
-            hb: &hb,
-            variables: &hash,
-        };
+        let state = rule_state(&hb, &hash);
 
         let to_merge = json!([1]);
         let output = perform_merge("{}", &to_merge, &state)?;
@@ -423,10 +444,7 @@ mod tests {
     fn merge_without_json_buffer() {
         let hb = Handlebars::new();
         let hash = HashMap::<String, String>::new();
-        let state = RuleState {
-            hb: &hb,
-            variables: &hash,
-        };
+        let state = rule_state(&hb, &hash);
 
         let to_merge = json!({});
         let output = perform_merge("invalid", &to_merge, &state);
@@ -441,10 +459,7 @@ mod tests {
     fn merge_with_json_buffer() {
         let hb = Handlebars::new();
         let hash = HashMap::<String, String>::new();
-        let state = RuleState {
-            hb: &hb,
-            variables: &hash,
-        };
+        let state = rule_state(&hb, &hash);
 
         let to_merge = json!({"hello" : 1});
         let output = perform_merge("{}", &to_merge, &state);
@@ -459,14 +474,17 @@ mod tests {
         let hb = Handlebars::new();
         let mut hash = HashMap::<String, String>::new();
         hash.insert("name".to_string(), "world".to_string());
-
-        let state = RuleState {
-            hb: &hb,
-            variables: &hash,
-        };
+        let state = rule_state(&hb, &hash);
 
         let to_merge = json!({"hello" : "{{name}}"});
         let output = perform_merge("{}", &to_merge, &state);
         assert_eq!(output, Ok("{\"hello\":\"world\"}".to_string()));
+    }
+
+    #[test]
+    fn test_parsing() {
+        let buffer = "blah";
+        let parsed = parse_message(buffer);
+        assert!(parsed.is_err());
     }
 }
