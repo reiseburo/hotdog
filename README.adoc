@@ -50,7 +50,7 @@ OPTIONS:
 == Installation
 
 Hotdog can be installed by grabbing a
-linK:https://github.com/reiseburo/hotdog/releases[released binary].
+link:https://github.com/reiseburo/hotdog/releases[released binary].
 The system which will run `hotdog` *must* have `libsasl2` installed, e.g.:
 
 .Ubuntu
