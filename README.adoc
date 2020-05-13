@@ -400,6 +400,9 @@ in the <<yml-metrics>> section. Each metric will be prefixed under `hotdog.*`.
 | `hotdog.kafka.submitted`
 | Counter tracking the number of messages submitted to Kafka
 
+| `hotdog.kafka.submitted.<topicname>`
+| Counter tracking the number of messages submitted to each Kafka topic
+
 | `hotdog.kafka.producer.sent`
 | Timer which tracks the amount of time it takes to actually write messages to Kafka
 
