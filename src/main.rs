@@ -201,6 +201,7 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
         if let Err(e) = &parsed {
             state.metrics.counter("error.log_parse").count(1);
             error!("failed to parse message: {}", e);
+            continue;
         }
 
         /*
