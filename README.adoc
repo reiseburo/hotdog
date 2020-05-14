@@ -425,7 +425,7 @@ in the <<yml-metrics>> section. Each metric will be prefixed under `hotdog.*`.
 | Count of lines which could not have a merge action applied as configured due to a configuration error
 
 
-| `hotdog.error.merge.merge_target_not_json`
+| `hotdog.error.merge_target_not_json`
 | Count of lines received for a merge action which were not JSON, and therefore could not be merged.
 
 |===
