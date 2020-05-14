@@ -16,6 +16,7 @@ extern crate serde_regex;
 #[macro_use]
 extern crate serde_json;
 extern crate syslog_rfc5424;
+extern crate syslog_loose;
 
 use async_std::{
     io::BufReader,
@@ -31,7 +32,6 @@ use dipstick::*;
 use handlebars::Handlebars;
 use log::*;
 use std::collections::HashMap;
-use syslog_rfc5424::parse_message;
 
 mod kafka;
 mod merge;
@@ -178,11 +178,47 @@ async fn accept_loop(
     Ok(())
 }
 
+#[derive(Debug)]
+enum SyslogErrors {
+    UnknownFormat,
+}
+
+#[derive(Debug)]
+struct SyslogMessage {
+    msg: String,
+}
+
+/**
+ * Attempt to parse a given line either as RFC 5424 or RFC 3164
+ */
+fn parse_line(line: String) -> std::result::Result<SyslogMessage, SyslogErrors> {
+    match syslog_rfc5424::parse_message(&line) {
+        Ok(msg) => {
+            return Ok(SyslogMessage {
+                msg: msg.msg,
+            })
+        },
+        Err(_) => {
+            let parsed = syslog_loose::parse_message(&line);
+
+            /*
+             * Since syslog_loose doesn't give a Result, the only way to tell if themessage wasn't
+             * parsed properly is if some fields are None'd out.
+             */
+            if parsed.timestamp != None {
+                return Ok(SyslogMessage{
+                    msg: parsed.msg.to_string(),
+                })
+            }
+            Err(SyslogErrors::UnknownFormat)
+        },
+    }
+}
+
 /**
  * connection_loop is responsible for handling incoming syslog streams connections
  *
  */
-
 pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
     reader: BufReader<R>,
     state: ConnectionState,
@@ -196,20 +232,21 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
         let line = line?;
         debug!("log: {}", line);
 
-        let parsed = parse_message(line);
+        let parsed = parse_line(line);
 
-        if let Err(e) = &parsed {
+        if let Err(_e) = &parsed {
             state.metrics.counter("error.log_parse").count(1);
-            error!("failed to parse message: {}", e);
+            error!("failed to parse messad");
             continue;
         }
-
         /*
          * Now that we've logged the error, let's unpack and bubble the error anyways
          */
-        let msg = parsed?;
+        let msg = parsed.unwrap();
         lines_count.count(1);
         let mut continue_rules = true;
+        debug!("parsed as: {}", msg.msg);
+
 
         for rule in state.settings.rules.iter() {
             /*
@@ -483,9 +520,32 @@ mod tests {
     }
 
     #[test]
-    fn test_parsing() {
-        let buffer = "blah";
-        let parsed = parse_message(buffer);
+    fn test_parsing_invalid() {
+        let buffer = "blah".to_string();
+        let parsed = parse_line(buffer);
+        if let Ok(msg) = &parsed {
+            println!("msg: {}", msg.msg);
+        }
         assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn test_5424() {
+        let buffer = r#"<13>1 2020-04-18T15:16:09.956153-07:00 coconut tyler - - [timeQuality tzKnown="1" isSynced="1" syncAccuracy="505061"] hi"#.to_string();
+        let parsed = parse_line(buffer);
+        assert!(parsed.is_ok());
+        if let Ok(msg) = parsed {
+            assert_eq!("hi", msg.msg);
+        }
+    }
+
+    #[test]
+    fn test_3164() {
+        let buffer = r#"<190>May 13 21:45:18 coconut hotdog: hi"#.to_string();
+        let parsed = parse_line(buffer);
+        assert!(parsed.is_ok());
+        if let Ok(msg) = parsed {
+            assert_eq!("hi", msg.msg);
+        }
     }
 }

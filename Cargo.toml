@@ -13,6 +13,7 @@ futures = { version = "~0.3.4", features = ["thread-pool"] }
 
 # For parsing the syslog formatted messages
 syslog_rfc5424 = "~0.6.1"
+syslog_loose = "0.2.0"
 
 # Needed for listening for TLS connections
 async-tls = "~0.7.0"
