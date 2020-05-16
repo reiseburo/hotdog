@@ -95,7 +95,7 @@ fn load_tls_config(settings: &Settings) -> io::Result<ServerConfig> {
 pub async fn accept_loop(
     addr: impl ToSocketAddrs,
     settings: Arc<Settings>,
-    metrics: Arc<LockingOutput>,
+    metrics: Arc<StatsdScope>,
 ) -> Result<()> {
     let config = load_tls_config(&settings)?;
 

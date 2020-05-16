@@ -40,7 +40,7 @@ pub struct Kafka {
      * ::new() and the .connect() function
      */
     producer: Option<FutureProducer<DefaultClientContext>>,
-    metrics: Option<Arc<LockingOutput>>,
+    metrics: Option<Arc<StatsdScope>>,
     rx: Receiver<KafkaMessage>,
     tx: Sender<KafkaMessage>,
 }
@@ -56,7 +56,7 @@ impl Kafka {
         }
     }
 
-    pub fn with_metrics(&mut self, metrics: Arc<LockingOutput>) {
+    pub fn with_metrics(&mut self, metrics: Arc<StatsdScope>) {
         self.metrics = Some(metrics);
     }
 
