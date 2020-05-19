@@ -336,9 +336,9 @@ dependencies = [
 
 [[package]]
 name = "dipstick"
-version = "0.7.13"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52d7ff907d35a3b505f17bbb7cd0afb61da5c0e7c35b0fbe90fb7d3f59e402ff"
+checksum = "585cd86f9fe6282234f10e7435d1c0df9203909731ca9ebaabf5f7e80d5f28e4"
 dependencies = [
  "atomic_refcell",
  "crossbeam-channel 0.3.9",

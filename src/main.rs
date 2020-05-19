@@ -49,7 +49,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>
  */
 pub struct ConnectionState {
     settings: Arc<Settings>,
-    metrics: Arc<LockingOutput>,
+    metrics: Arc<StatsdScope>,
     sender: Sender<KafkaMessage>,
 }
 
@@ -60,7 +60,7 @@ pub struct ConnectionState {
 struct RuleState<'a> {
     variables: &'a HashMap<String, String>,
     hb: &'a handlebars::Handlebars<'a>,
-    metrics: Arc<LockingOutput>,
+    metrics: Arc<StatsdScope>,
 }
 
 fn main() -> Result<()> {
@@ -136,7 +136,7 @@ fn main() -> Result<()> {
 async fn accept_loop(
     addr: impl ToSocketAddrs,
     settings: Arc<Settings>,
-    metrics: Arc<LockingOutput>,
+    metrics: Arc<StatsdScope>,
 ) -> Result<()> {
     let mut kafka = Kafka::new(settings.global.kafka.buffer);
 
