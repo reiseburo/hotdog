@@ -3,16 +3,16 @@
  * hotdog.yml file format
  */
 use async_std::path::Path;
+use handlebars::Handlebars;
 use log::*;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
+use uuid::Uuid;
 
 pub fn load(file: &str) -> Settings {
     let conf = load_configuration(file);
-    let mut settings: Settings = conf.try_into().expect("Failed to parse the configuration file");
-    settings.populate_caches();
-    settings
+    conf.try_into().expect("Failed to parse the configuration file")
 }
 
 fn load_configuration(file: &str) -> config::Config {
@@ -63,16 +63,30 @@ pub enum Action {
         json: Value,
         #[serde(default = "default_none")]
         json_str: Option<String>,
+        #[serde(default = "default_none")]
+        template_id: Option<String>,
     },
-    Replace { template: String },
+    Replace {
+        template: String,
+        #[serde(default = "default_none")]
+        template_id: Option<String>,
+    },
     Stop,
 }
 
 impl Action {
-    fn populate_caches(&mut self) {
+    /**
+     * prerender_templates will ensure that the action's Handlebarts templates have already been
+     * compiled by the time hotdog starts receiving traffic
+     */
+    fn prerender_templates(&mut self, hb: &mut Handlebars) {
         match self {
-            Action::Merge { json, json_str } => {
-                *json_str = Some(serde_json::to_string(json).expect("Failed to serialize Merge action"));
+            Action::Merge { json, json_str, template_id } => {
+                let s = serde_json::to_string(json).expect("Failed to serialize Merge action");
+                let id = format!("template: {}", Uuid::new_v4());
+                hb.register_template_string(&id, &s);
+                *json_str = Some(s);
+                *template_id = Some(id);
             },
             _ => {
             },
@@ -91,9 +105,9 @@ pub struct Rule {
 }
 
 impl Rule {
-    fn populate_caches(&mut self) {
+    fn prerender_templates(&mut self, hb: &mut Handlebars) {
         self.actions.iter_mut().for_each(|action| {
-            action.populate_caches();
+            action.prerender_templates(hb);
         });
     }
 }
@@ -156,12 +170,9 @@ pub struct Settings {
 }
 
 impl Settings {
-    /**
-     * Populate any configuration caches which we want to us
-     */
-    fn populate_caches(&mut self) {
+    pub fn prerender_templates(&mut self, hb: &mut Handlebars) {
         self.rules.iter_mut().for_each(|rule| {
-            rule.populate_caches();
+            rule.prerender_templates(hb);
         });
     }
 }
@@ -202,16 +213,40 @@ mod tests {
     }
 
     #[test]
-    fn test_load_example_and_populate_caches() {
-        let settings = load("test/configs/single-rule-with-merge.yml");
+    fn test_load_example_and_render() {
+        let mut settings = load("test/configs/single-rule-with-merge.yml");
         assert_eq!(settings.rules.len(), 1);
+
+        let mut hb = Handlebars::new();
+        settings.prerender_templates(&mut hb);
+
         match &settings.rules[0].actions[0] {
-            Action::Merge { json: _, json_str } => {
+            Action::Merge { json: _, json_str, template_id } => {
                 assert!(json_str.is_some());
+                assert!(template_id.is_some());
             },
             _ => {
                 assert!(false);
             }
+        }
+    }
+
+    #[test]
+    fn test_action_prerender() {
+        let mut action = Action::Merge {
+            json: json!({}),
+            json_str: None,
+            template_id: None,
+        };
+        let mut hb = Handlebars::new();
+        action.prerender_templates(&mut hb);
+        match action {
+            Action::Merge { json: _, json_str: _, template_id } => {
+                assert!(template_id.is_some());
+            },
+            _ => {
+                assert!(false);
+            },
         }
     }
 
