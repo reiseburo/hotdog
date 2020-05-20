@@ -10,8 +10,9 @@ use std::time::Duration;
 
 pub fn load(file: &str) -> Settings {
     let conf = load_configuration(file);
-    conf.try_into()
-        .expect("Failed to parse the configuration file")
+    let mut settings: Settings = conf.try_into().expect("Failed to parse the configuration file");
+    settings.populate_caches();
+    settings
 }
 
 fn load_configuration(file: &str) -> config::Config {
@@ -58,9 +59,25 @@ pub enum Field {
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum Action {
     Forward { topic: String },
-    Merge { json: Value },
+    Merge {
+        json: Value,
+        #[serde(default = "default_none")]
+        json_str: Option<String>,
+    },
     Replace { template: String },
     Stop,
+}
+
+impl Action {
+    fn populate_caches(&mut self) {
+        match self {
+            Action::Merge { json, json_str } => {
+                *json_str = Some(serde_json::to_string(json).expect("Failed to serialize Merge action"));
+            },
+            _ => {
+            },
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -71,6 +88,14 @@ pub struct Rule {
     pub regex: Option<regex::Regex>,
     #[serde(default = "empty_str")]
     pub jmespath: String,
+}
+
+impl Rule {
+    fn populate_caches(&mut self) {
+        self.actions.iter_mut().for_each(|action| {
+            action.populate_caches();
+        });
+    }
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -130,6 +155,17 @@ pub struct Settings {
     pub rules: Vec<Rule>,
 }
 
+impl Settings {
+    /**
+     * Populate any configuration caches which we want to us
+     */
+    fn populate_caches(&mut self) {
+        self.rules.iter_mut().for_each(|rule| {
+            rule.populate_caches();
+        });
+    }
+}
+
 /*
  * Default functions
  */
@@ -163,6 +199,20 @@ mod tests {
     #[test]
     fn test_load_example_config() {
         load("hotdog.yml");
+    }
+
+    #[test]
+    fn test_load_example_and_populate_caches() {
+        let settings = load("test/configs/single-rule-with-merge.yml");
+        assert_eq!(settings.rules.len(), 1);
+        match &settings.rules[0].actions[0] {
+            Action::Merge { json: _, json_str } => {
+                assert!(json_str.is_some());
+            },
+            _ => {
+                assert!(false);
+            }
+        }
     }
 
     #[test]

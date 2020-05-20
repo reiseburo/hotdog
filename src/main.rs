@@ -366,12 +366,17 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
                         }
                         break;
                     }
-                    Action::Merge { json } => {
-                        debug!("merging JSON content: {}", json);
-                        if let Ok(buffer) = perform_merge(&msg.msg, json, &rule_state) {
-                            output = buffer;
-                        } else {
-                            continue_rules = false;
+                    Action::Merge { json, json_str } => {
+                        if let Some(json_str) = json_str {
+                            debug!("merging JSON content: {}", json);
+                            if let Ok(buffer) = perform_merge(&msg.msg, json_str, &rule_state) {
+                                output = buffer;
+                            } else {
+                                continue_rules = false;
+                            }
+                        }
+                        else {
+                            error!("Merge action contained no cached json-str for {}", json);
                         }
                     }
                     Action::Replace { template } => {
@@ -396,28 +401,30 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
  */
 fn perform_merge(
     buffer: &str,
-    to_merge: &serde_json::Value,
+    to_merge: &str,
     state: &RuleState,
 ) -> std::result::Result<String, String> {
-    /*
-     * If the administrator configured the merge incorrectly, just pass the buffer along un-merged
-     */
-    if !to_merge.is_object() {
-        error!("Merge requested was not a JSON object: {}", to_merge);
-        state.metrics.counter("error.merge_of_invalid_json").count(1);
-        return Ok(buffer.to_string());
-    }
 
-    if let Ok(mut msg_json) = serde_json::from_str::<serde_json::Value>(buffer) {
-        merge::merge(&mut msg_json, to_merge);
-        if let Ok(output) = serde_json::to_string(&msg_json) {
-            if let Ok(rendered) = state.hb.render_template(&output, &state.variables) {
-                return Ok(rendered);
+    if let Ok(mut msg_json) = serde_json::from_str(&buffer) {
+        if let Ok(rendered) = state.hb.render_template(&to_merge, &state.variables) {
+            let to_merge: serde_json::Value = serde_json::from_str(&rendered).expect("Failed to deserialize our rendered to_merge_str");
+
+            /*
+            * If the administrator configured the merge incorrectly, just pass the buffer along un-merged
+            */
+            if !to_merge.is_object() {
+                error!("Merge requested was not a JSON object: {}", to_merge);
+                state.metrics.counter("error.merge_of_invalid_json").count(1);
+                return Ok(buffer.to_string());
             }
-            Ok(output)
-        } else {
-            Err("Failed to render".to_string())
+
+            merge::merge(&mut msg_json, &to_merge);
+
+            if let Ok(output) = serde_json::to_string(&msg_json) {
+                return Ok(output);
+            }
         }
+        Err("Failed to merge and serialize".to_string())
     } else {
         error!("Failed to parse as JSON, stopping actions: {}", buffer);
         state.metrics.counter("error.merge_target_not_json").count(1);
@@ -455,7 +462,7 @@ mod tests {
         let hash = HashMap::<String, String>::new();
         let state = rule_state(&hb, &hash);
 
-        let to_merge = json!({});
+        let to_merge = r#"{}"#;
         let output = perform_merge("{}", &to_merge, &state);
         assert_eq!(output, Ok("{}".to_string()));
     }
@@ -469,7 +476,7 @@ mod tests {
         let hash = HashMap::<String, String>::new();
         let state = rule_state(&hb, &hash);
 
-        let to_merge = json!([1]);
+        let to_merge = r#"[1]"#;
         let output = perform_merge("{}", &to_merge, &state)?;
         assert_eq!(output, "{}".to_string());
         Ok(())
@@ -484,7 +491,7 @@ mod tests {
         let hash = HashMap::<String, String>::new();
         let state = rule_state(&hb, &hash);
 
-        let to_merge = json!({});
+        let to_merge = r#"{}"#;
         let output = perform_merge("invalid", &to_merge, &state);
         let expected = Err("Not JSON".to_string());
         assert_eq!(output, expected);
@@ -499,7 +506,7 @@ mod tests {
         let hash = HashMap::<String, String>::new();
         let state = rule_state(&hb, &hash);
 
-        let to_merge = json!({"hello" : 1});
+        let to_merge = r#"{"hello":1}"#;
         let output = perform_merge("{}", &to_merge, &state);
         assert_eq!(output, Ok("{\"hello\":1}".to_string()));
     }
@@ -514,7 +521,7 @@ mod tests {
         hash.insert("name".to_string(), "world".to_string());
         let state = rule_state(&hb, &hash);
 
-        let to_merge = json!({"hello" : "{{name}}"});
+        let to_merge = r#"{"hello":"{{name}}"}"#;
         let output = perform_merge("{}", &to_merge, &state);
         assert_eq!(output, Ok("{\"hello\":\"world\"}".to_string()));
     }
