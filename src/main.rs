@@ -425,6 +425,40 @@ fn perform_merge(
     }
 }
 
+/**
+ * Render all the (string) values of the given serde Map as if they were handlebars templates
+ */
+fn render_value<'a>(mut value: serde_json::Value,
+                hb: &'a handlebars::Handlebars<'a>,
+                vars: &'a HashMap<String, String>) -> serde_json::Value {
+
+    if value.is_string() {
+        if let Ok(rendered) = hb.render_template(value.as_str().unwrap(), vars) {
+            return serde_json::Value::String(rendered);
+        }
+    }
+    if value.is_array() {
+        let mut converted: Vec<serde_json::Value> = vec![];
+
+        for val in value.as_array().unwrap() {
+            converted.push(render_value(val.clone(), hb, vars));
+        };
+
+        return serde_json::Value::Array(converted);
+    }
+    if value.is_object() {
+        let mut obj = serde_json::map::Map::new();
+        let value_obj = value.as_object_mut().unwrap();
+
+        for key in value_obj.keys() {
+            obj.insert(key.to_string(),
+                    render_value(value_obj[key].clone(), hb, vars));
+        }
+        return serde_json::Value::Object(obj);
+    }
+    value
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -547,5 +581,53 @@ mod tests {
         if let Ok(msg) = parsed {
             assert_eq!("hi", msg.msg);
         }
+    }
+
+    /**
+     * Rendering a string value should be parsed and returned back with variables
+     * substituted
+     */
+    #[test]
+    fn test_render_value_string() {
+        let hb = Handlebars::new();
+        let mut hash = HashMap::<String, String>::new();
+        hash.insert(String::from("name"), String::from("ferris"));
+
+        let val: serde_json::Value = json!("hello {{name}}");
+        let rval = render_value(val, &hb, &hash);
+        assert_eq!(rval.to_string(), r#""hello ferris""#);
+    }
+
+    #[test]
+    fn test_render_value_array() {
+        let hb = Handlebars::new();
+        let mut hash = HashMap::<String, String>::new();
+        hash.insert(String::from("name"), String::from("ferris"));
+
+        let val: serde_json::Value = json!(["hello", "{{name}}"]);
+        let rval = render_value(val, &hb, &hash);
+        assert_eq!(rval.to_string(), r#"["hello","ferris"]"#);
+    }
+
+    #[test]
+    fn test_render_value_object() {
+        let hb = Handlebars::new();
+        let mut hash = HashMap::<String, String>::new();
+        hash.insert(String::from("name"), String::from("ferris"));
+
+        let val: serde_json::Value = json!({"hello" : "{{name}}"});
+        let rval = render_value(val, &hb, &hash);
+        assert_eq!(rval.to_string(), r#"{"hello":"ferris"}"#);
+    }
+
+    #[test]
+    fn test_render_value_nested_object() {
+        let hb = Handlebars::new();
+        let mut hash = HashMap::<String, String>::new();
+        hash.insert(String::from("name"), String::from("ferris"));
+
+        let val: serde_json::Value = json!({"hello" : {"nested" : "{{name}}"}});
+        let rval = render_value(val, &hb, &hash);
+        assert_eq!(rval.to_string(), r#"{"hello":{"nested":"ferris"}}"#);
     }
 }
