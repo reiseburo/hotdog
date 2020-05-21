@@ -176,6 +176,46 @@ async fn accept_loop(
     Ok(())
 }
 
+fn template_id_for(rule: &Rule, index: usize) -> String {
+    format!("{}-{}", rule.uuid, index)
+}
+
+/**
+ * precompile_templates will register templates for all the Merge and Replace actions from the
+ * settings
+ *
+ * Will usually return a true, unless some setting parse failure occurred which is a critical
+ * failure for the daemon
+ */
+fn precompile_templates(hb: &mut Handlebars, settings: Arc<Settings>) -> bool {
+    for rule in settings.rules.iter() {
+        for index in 0..rule.actions.len() {
+            match &rule.actions[index] {
+                Action::Merge { json: _, json_str } => {
+                    let template_id = template_id_for(rule, index);
+
+                    if let Some(template) = json_str {
+
+                        hb.register_template_string(&template_id, &template);
+                    }
+                    else {
+                        error!("Could not look up the json_str for a Merge action");
+                        return false;
+                    }
+                },
+                Action::Replace { template } => {
+                    let template_id = format!("{}-{}", rule.uuid, index);
+
+                    hb.register_template_string(&template_id, &template);
+                },
+                _ => {
+                },
+            }
+        }
+    }
+    true
+}
+
 /**
  * connection_loop is responsible for handling incoming syslog streams connections
  *
@@ -187,7 +227,12 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
     let mut lines = reader.lines();
     let lines_count = state.metrics.counter("lines");
 
-    let hb = Handlebars::new();
+    let mut hb = Handlebars::new();
+    if ! precompile_templates(&mut hb, state.settings.clone()) {
+        error!("Failing to precompile templates is a fatal error, not going to parse logs since the configuration is broken");
+        // TODO fix the Err types
+        return Ok(());
+    }
 
     while let Some(line) = lines.next().await {
         let line = line?;
@@ -282,7 +327,9 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
             /*
              * Process the actions one the rule has matched
              */
-            for action in rule.actions.iter() {
+            for index in 0..rule.actions.len() {
+                let action = &rule.actions[index];
+
                 match action {
                     Action::Forward { topic } => {
                         /*
@@ -326,26 +373,26 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
                             state.metrics.counter("error.topic_parse_failed").count(1);
                         }
                         break;
-                    }
-                    Action::Merge { json, json_str } => {
-                        if let Some(json_str) = json_str {
-                            debug!("merging JSON content: {}", json);
-                            if let Ok(buffer) = perform_merge(&msg.msg, json_str, &rule_state) {
-                                output = buffer;
-                            } else {
-                                continue_rules = false;
-                            }
+                    },
+
+                    Action::Merge { json, json_str: _ } => {
+                        debug!("merging JSON content: {}", json);
+                        if let Ok(buffer) = perform_merge(&msg.msg, &template_id_for(&rule, index), &rule_state) {
+                            output = buffer;
+                        } else {
+                            continue_rules = false;
                         }
-                        else {
-                            error!("Merge action contained no cached json-str for {}", json);
-                        }
-                    }
+                    },
+
                     Action::Replace { template } => {
-                        debug!("replacing content with template: {}", template);
-                        if let Ok(rendered) = hb.render_template(template, &hash) {
+                        let template_id = template_id_for(&rule, index);
+
+                        debug!("replacing content with template: {} ({})", template, template_id);
+                        if let Ok(rendered) = hb.render(&template_id, &hash) {
                             output = rendered;
                         }
-                    }
+                    },
+
                     Action::Stop => {
                         continue_rules = false;
                     }
@@ -362,12 +409,12 @@ pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
  */
 fn perform_merge(
     buffer: &str,
-    to_merge: &str,
+    template_id: &str,
     state: &RuleState,
 ) -> std::result::Result<String, String> {
 
     if let Ok(mut msg_json) = serde_json::from_str(&buffer) {
-        if let Ok(rendered) = state.hb.render_template(&to_merge, &state.variables) {
+        if let Ok(rendered) = state.hb.render(template_id, &state.variables) {
             let to_merge: serde_json::Value = serde_json::from_str(&rendered).expect("Failed to deserialize our rendered to_merge_str");
 
             /*
@@ -419,12 +466,14 @@ mod tests {
 
     #[test]
     fn merge_with_empty() {
-        let hb = Handlebars::new();
+        let mut hb = Handlebars::new();
+        let template_id = "1";
+        hb.register_template_string(&template_id, "{}");
+
         let hash = HashMap::<String, String>::new();
         let state = rule_state(&hb, &hash);
 
-        let to_merge = r#"{}"#;
-        let output = perform_merge("{}", &to_merge, &state);
+        let output = perform_merge("{}", template_id, &state);
         assert_eq!(output, Ok("{}".to_string()));
     }
 
@@ -433,12 +482,14 @@ mod tests {
      */
     #[test]
     fn merge_with_non_object() -> std::result::Result<(), String> {
-        let hb = Handlebars::new();
+        let mut hb = Handlebars::new();
+        let template_id = "1";
+        hb.register_template_string(&template_id, "[1]");
+
         let hash = HashMap::<String, String>::new();
         let state = rule_state(&hb, &hash);
 
-        let to_merge = r#"[1]"#;
-        let output = perform_merge("{}", &to_merge, &state)?;
+        let output = perform_merge("{}", template_id, &state)?;
         assert_eq!(output, "{}".to_string());
         Ok(())
     }
@@ -448,12 +499,15 @@ mod tests {
      */
     #[test]
     fn merge_without_json_buffer() {
-        let hb = Handlebars::new();
+        let mut hb = Handlebars::new();
+        let template_id = "1";
+        hb.register_template_string(&template_id, "{}");
+
         let hash = HashMap::<String, String>::new();
         let state = rule_state(&hb, &hash);
 
         let to_merge = r#"{}"#;
-        let output = perform_merge("invalid", &to_merge, &state);
+        let output = perform_merge("invalid", template_id, &state);
         let expected = Err("Not JSON".to_string());
         assert_eq!(output, expected);
     }
@@ -463,12 +517,14 @@ mod tests {
      */
     #[test]
     fn merge_with_json_buffer() {
-        let hb = Handlebars::new();
+        let mut hb = Handlebars::new();
+        let template_id = "1";
+        hb.register_template_string(&template_id, r#"{"hello":1}"#);
+
         let hash = HashMap::<String, String>::new();
         let state = rule_state(&hb, &hash);
 
-        let to_merge = r#"{"hello":1}"#;
-        let output = perform_merge("{}", &to_merge, &state);
+        let output = perform_merge("{}", template_id, &state);
         assert_eq!(output, Ok("{\"hello\":1}".to_string()));
     }
 
@@ -477,13 +533,39 @@ mod tests {
      */
     #[test]
     fn merge_with_json_buffer_and_vars() {
-        let hb = Handlebars::new();
+        let mut hb = Handlebars::new();
+        let template_id = "1";
+        hb.register_template_string(&template_id, r#"{"hello":"{{name}}"}"#);
+
         let mut hash = HashMap::<String, String>::new();
         hash.insert("name".to_string(), "world".to_string());
         let state = rule_state(&hb, &hash);
 
-        let to_merge = r#"{"hello":"{{name}}"}"#;
-        let output = perform_merge("{}", &to_merge, &state);
+        let output = perform_merge("{}", template_id, &state);
         assert_eq!(output, Ok("{\"hello\":\"world\"}".to_string()));
+    }
+
+    #[test]
+    fn test_precompile_templates_merge() {
+        let mut hb = Handlebars::new();
+        let settings = Arc::new(load("test/configs/single-rule-with-merge.yml"));
+        // Assuming that we're going to register the template with this id
+        let template_id = format!("{}-{}", settings.rules[0].uuid, 0);
+
+        let result = precompile_templates(&mut hb, settings.clone());
+        assert!(result);
+        assert!(hb.has_template(&template_id));
+    }
+
+    #[test]
+    fn test_precompile_templates_replace() {
+        let mut hb = Handlebars::new();
+        let settings = Arc::new(load("test/configs/single-rule-with-replace.yml"));
+        // Assuming that we're going to register the template with this id
+        let template_id = format!("{}-{}", settings.rules[0].uuid, 0);
+
+        let result = precompile_templates(&mut hb, settings.clone());
+        assert!(result);
+        assert!(hb.has_template(&template_id));
     }
 }

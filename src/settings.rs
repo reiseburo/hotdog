@@ -7,6 +7,7 @@ use log::*;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
+use uuid::Uuid;
 
 pub fn load(file: &str) -> Settings {
     let conf = load_configuration(file);
@@ -82,6 +83,8 @@ impl Action {
 
 #[derive(Debug, Deserialize)]
 pub struct Rule {
+    #[serde(skip_serializing, skip_deserializing, default = "default_uuid")]
+    pub uuid: Uuid,
     pub field: Field,
     pub actions: Vec<Action>,
     #[serde(with = "serde_regex", default = "default_none")]
@@ -192,6 +195,10 @@ fn default_none<T>() -> Option<T> {
     None
 }
 
+fn default_uuid() -> Uuid {
+    Uuid::new_v4()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,5 +235,10 @@ mod tests {
     #[test]
     fn test_kafka_buffer_default() {
         assert_eq!(1024, kafka_buffer_default());
+    }
+
+    #[test]
+    fn test_default_uuid() {
+        assert_eq!(false, default_uuid().is_nil());
     }
 }
