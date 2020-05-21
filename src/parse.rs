@@ -20,7 +20,7 @@ pub struct SyslogMessage {
  */
 pub fn parse_line(line: String) -> std::result::Result<SyslogMessage, SyslogErrors> {
     match syslog_rfc5424::parse_message(&line) {
-        Ok(msg) => return Ok(SyslogMessage { msg: msg.msg }),
+        Ok(msg) => Ok(SyslogMessage { msg: msg.msg }),
         Err(_) => {
             let parsed = syslog_loose::parse_message(&line);
 

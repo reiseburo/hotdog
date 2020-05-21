@@ -195,7 +195,10 @@ fn precompile_templates(hb: &mut Handlebars, settings: Arc<Settings>) -> bool {
                     let template_id = template_id_for(rule, index);
 
                     if let Some(template) = json_str {
-                        hb.register_template_string(&template_id, &template);
+                        if let Err(e) = hb.register_template_string(&template_id, &template) {
+                            error!("Failed to register template! {}\n{}", e, template);
+                            return false;
+                        }
                     } else {
                         error!("Could not look up the json_str for a Merge action");
                         return false;
@@ -203,8 +206,10 @@ fn precompile_templates(hb: &mut Handlebars, settings: Arc<Settings>) -> bool {
                 }
                 Action::Replace { template } => {
                     let template_id = format!("{}-{}", rule.uuid, index);
-
-                    hb.register_template_string(&template_id, &template);
+                    if let Err(e) = hb.register_template_string(&template_id, &template) {
+                        error!("Failed to register template! {}\n{}", e, template);
+                        return false;
+                    }
                 }
                 _ => {}
             }
@@ -468,7 +473,7 @@ mod tests {
         RuleState {
             hb: &hb,
             variables: &hash,
-            metrics: metrics,
+            metrics,
         }
     }
 

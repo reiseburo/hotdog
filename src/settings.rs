@@ -77,12 +77,9 @@ pub enum Action {
 
 impl Action {
     fn populate_caches(&mut self) {
-        match self {
-            Action::Merge { json, json_str } => {
-                *json_str =
-                    Some(serde_json::to_string(json).expect("Failed to serialize Merge action"));
-            }
-            _ => {}
+        if let Action::Merge { json, json_str } = self {
+            *json_str =
+                Some(serde_json::to_string(json).expect("Failed to serialize Merge action"));
         }
     }
 }
