@@ -7,11 +7,15 @@ use log::*;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
+use uuid::Uuid;
 
 pub fn load(file: &str) -> Settings {
     let conf = load_configuration(file);
-    conf.try_into()
-        .expect("Failed to parse the configuration file")
+    let mut settings: Settings = conf
+        .try_into()
+        .expect("Failed to parse the configuration file");
+    settings.populate_caches();
+    settings
 }
 
 fn load_configuration(file: &str) -> config::Config {
@@ -57,20 +61,47 @@ pub enum Field {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum Action {
-    Forward { topic: String },
-    Merge { json: Value },
-    Replace { template: String },
+    Forward {
+        topic: String,
+    },
+    Merge {
+        json: Value,
+        #[serde(default = "default_none")]
+        json_str: Option<String>,
+    },
+    Replace {
+        template: String,
+    },
     Stop,
+}
+
+impl Action {
+    fn populate_caches(&mut self) {
+        if let Action::Merge { json, json_str } = self {
+            *json_str =
+                Some(serde_json::to_string(json).expect("Failed to serialize Merge action"));
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Rule {
+    #[serde(skip_serializing, skip_deserializing, default = "default_uuid")]
+    pub uuid: Uuid,
     pub field: Field,
     pub actions: Vec<Action>,
     #[serde(with = "serde_regex", default = "default_none")]
     pub regex: Option<regex::Regex>,
     #[serde(default = "empty_str")]
     pub jmespath: String,
+}
+
+impl Rule {
+    fn populate_caches(&mut self) {
+        self.actions.iter_mut().for_each(|action| {
+            action.populate_caches();
+        });
+    }
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -130,6 +161,17 @@ pub struct Settings {
     pub rules: Vec<Rule>,
 }
 
+impl Settings {
+    /**
+     * Populate any configuration caches which we want to us
+     */
+    fn populate_caches(&mut self) {
+        self.rules.iter_mut().for_each(|rule| {
+            rule.populate_caches();
+        });
+    }
+}
+
 /*
  * Default functions
  */
@@ -156,6 +198,10 @@ fn default_none<T>() -> Option<T> {
     None
 }
 
+fn default_uuid() -> Uuid {
+    Uuid::new_v4()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,6 +209,20 @@ mod tests {
     #[test]
     fn test_load_example_config() {
         load("hotdog.yml");
+    }
+
+    #[test]
+    fn test_load_example_and_populate_caches() {
+        let settings = load("test/configs/single-rule-with-merge.yml");
+        assert_eq!(settings.rules.len(), 1);
+        match &settings.rules[0].actions[0] {
+            Action::Merge { json: _, json_str } => {
+                assert!(json_str.is_some());
+            }
+            _ => {
+                assert!(false);
+            }
+        }
     }
 
     #[test]
@@ -178,5 +238,10 @@ mod tests {
     #[test]
     fn test_kafka_buffer_default() {
         assert_eq!(1024, kafka_buffer_default());
+    }
+
+    #[test]
+    fn test_default_uuid() {
+        assert_eq!(false, default_uuid().is_nil());
     }
 }
