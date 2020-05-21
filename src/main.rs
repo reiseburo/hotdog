@@ -11,13 +11,9 @@ extern crate regex;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-#[cfg(test)]
-#[macro_use]
-extern crate serde_json;
 extern crate serde_regex;
 extern crate syslog_rfc5424;
 extern crate syslog_loose;
-extern crate uuid;
 
 use async_std::{
     io::BufReader,
@@ -49,11 +45,10 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>
 /**
  * ConnectionState carries the necessary types of state into new tasks for handling connections
  */
-pub struct ConnectionState<'a> {
+pub struct ConnectionState {
     settings: Arc<Settings>,
     metrics: Arc<StatsdScope>,
     sender: Sender<KafkaMessage>,
-    hb: Arc<Handlebars<'a>>,
 }
 
 /**
@@ -93,11 +88,7 @@ fn main() -> Result<()> {
         .get_matches();
 
     let settings_file = matches.value_of("config").unwrap_or("hotdog.yml");
-    let mut settings = settings::load(settings_file);
-    let mut hb = Handlebars::new();
-    settings.prerender_templates(&mut hb);
-
-    let settings = Arc::new(settings);
+    let settings = Arc::new(settings::load(settings_file));
 
     if let Some(test_file) = matches.value_of("test") {
         return task::block_on(rules::test_rules(&test_file, settings));
@@ -127,12 +118,11 @@ fn main() -> Result<()> {
                 addr,
                 settings.clone(),
                 metrics,
-                hb,
             ))
         }
         _ => {
             info!("Serving in plaintext mode");
-            task::block_on(accept_loop(addr, settings.clone(), metrics, hb))
+            task::block_on(accept_loop(addr, settings.clone(), metrics))
         }
     }
 }
@@ -141,13 +131,11 @@ fn main() -> Result<()> {
  * accept_loop will simply create the socket listener and dispatch newly accepted connections to
  * the connection_loop function
  */
-async fn accept_loop<'a>(
+async fn accept_loop(
     addr: impl ToSocketAddrs,
     settings: Arc<Settings>,
     metrics: Arc<StatsdScope>,
-    hb: Handlebars<'a>
 ) -> Result<()> {
-    let hb = Arc::new(hb);
     let mut kafka = Kafka::new(settings.global.kafka.buffer);
 
     if !kafka.connect(
@@ -176,7 +164,6 @@ async fn accept_loop<'a>(
             settings: settings.clone(),
             metrics: metrics.clone(),
             sender: sender.clone(),
-            hb: hb.clone(),
         };
 
         task::spawn(async move {
@@ -193,9 +180,9 @@ async fn accept_loop<'a>(
  * connection_loop is responsible for handling incoming syslog streams connections
  *
  */
-pub async fn read_logs<'a, R: async_std::io::Read + std::marker::Unpin>(
+pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
     reader: BufReader<R>,
-    state: ConnectionState<'a>,
+    state: ConnectionState,
 ) -> Result<()> {
     let mut lines = reader.lines();
     let lines_count = state.metrics.counter("lines");
@@ -340,7 +327,7 @@ pub async fn read_logs<'a, R: async_std::io::Read + std::marker::Unpin>(
                         }
                         break;
                     }
-                    Action::Merge { json, json_str, template_id } => {
+                    Action::Merge { json, json_str } => {
                         if let Some(json_str) = json_str {
                             debug!("merging JSON content: {}", json);
                             if let Ok(buffer) = perform_merge(&msg.msg, json_str, &rule_state) {
@@ -353,7 +340,7 @@ pub async fn read_logs<'a, R: async_std::io::Read + std::marker::Unpin>(
                             error!("Merge action contained no cached json-str for {}", json);
                         }
                     }
-                    Action::Replace { template, template_id: _ } => {
+                    Action::Replace { template } => {
                         debug!("replacing content with template: {}", template);
                         if let Ok(rendered) = hb.render_template(template, &hash) {
                             output = rendered;

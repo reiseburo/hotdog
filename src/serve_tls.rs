@@ -15,7 +15,6 @@ use async_std::{
 use async_tls::TlsAcceptor;
 use crossbeam::channel::bounded;
 use dipstick::*;
-use handlebars::Handlebars;
 use log::*;
 use rustls::internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use rustls::{
@@ -93,15 +92,12 @@ fn load_tls_config(settings: &Settings) -> io::Result<ServerConfig> {
     }
 }
 
-pub async fn accept_loop<'a>(
+pub async fn accept_loop(
     addr: impl ToSocketAddrs,
     settings: Arc<Settings>,
     metrics: Arc<StatsdScope>,
-    hb: Handlebars<'a>,
 ) -> Result<()> {
-
     let config = load_tls_config(&settings)?;
-    let hb = Arc::new(hb);
 
     let mut kafka = Kafka::new(settings.global.kafka.buffer);
 
@@ -162,7 +158,6 @@ pub async fn accept_loop<'a>(
             settings: settings.clone(),
             metrics: metrics.clone(),
             sender: sender.clone(),
-            hb: hb.clone(),
         };
 
         let ctx = conn_tx.clone();
@@ -178,10 +173,10 @@ pub async fn accept_loop<'a>(
 }
 
 /// The connection handling function.
-async fn handle_connection<'a>(
+async fn handle_connection(
     acceptor: &TlsAcceptor,
     tcp_stream: &mut TcpStream,
-    state: ConnectionState<'a>,
+    state: ConnectionState,
 ) -> io::Result<()> {
     let peer_addr = tcp_stream.peer_addr()?;
     debug!("Accepted connection from: {}", peer_addr);
