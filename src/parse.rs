@@ -1,4 +1,3 @@
-
 /**
  * Enum of syslog parse related errors
  */
@@ -13,7 +12,7 @@ pub enum SyslogErrors {
  */
 #[derive(Debug)]
 pub struct SyslogMessage {
-   pub msg: String,
+    pub msg: String,
 }
 
 /**
@@ -21,11 +20,7 @@ pub struct SyslogMessage {
  */
 pub fn parse_line(line: String) -> std::result::Result<SyslogMessage, SyslogErrors> {
     match syslog_rfc5424::parse_message(&line) {
-        Ok(msg) => {
-            return Ok(SyslogMessage {
-                msg: msg.msg,
-            })
-        },
+        Ok(msg) => return Ok(SyslogMessage { msg: msg.msg }),
         Err(_) => {
             let parsed = syslog_loose::parse_message(&line);
 
@@ -34,15 +29,14 @@ pub fn parse_line(line: String) -> std::result::Result<SyslogMessage, SyslogErro
              * parsed properly is if some fields are None'd out.
              */
             if parsed.timestamp != None {
-                return Ok(SyslogMessage{
+                return Ok(SyslogMessage {
                     msg: parsed.msg.to_string(),
-                })
+                });
             }
             Err(SyslogErrors::UnknownFormat)
-        },
+        }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

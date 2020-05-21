@@ -11,7 +11,9 @@ use uuid::Uuid;
 
 pub fn load(file: &str) -> Settings {
     let conf = load_configuration(file);
-    let mut settings: Settings = conf.try_into().expect("Failed to parse the configuration file");
+    let mut settings: Settings = conf
+        .try_into()
+        .expect("Failed to parse the configuration file");
     settings.populate_caches();
     settings
 }
@@ -59,13 +61,17 @@ pub enum Field {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum Action {
-    Forward { topic: String },
+    Forward {
+        topic: String,
+    },
     Merge {
         json: Value,
         #[serde(default = "default_none")]
         json_str: Option<String>,
     },
-    Replace { template: String },
+    Replace {
+        template: String,
+    },
     Stop,
 }
 
@@ -73,10 +79,10 @@ impl Action {
     fn populate_caches(&mut self) {
         match self {
             Action::Merge { json, json_str } => {
-                *json_str = Some(serde_json::to_string(json).expect("Failed to serialize Merge action"));
-            },
-            _ => {
-            },
+                *json_str =
+                    Some(serde_json::to_string(json).expect("Failed to serialize Merge action"));
+            }
+            _ => {}
         }
     }
 }
@@ -215,7 +221,7 @@ mod tests {
         match &settings.rules[0].actions[0] {
             Action::Merge { json: _, json_str } => {
                 assert!(json_str.is_some());
-            },
+            }
             _ => {
                 assert!(false);
             }
