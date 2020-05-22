@@ -62,3 +62,5 @@ chrono = "~0.4.11"
 
 # Needed to tag rules and actions with their own unique identifiers
 uuid = { version = "~0.8.1", features = ["v4"] }
+
+async-trait = "0.1.31"

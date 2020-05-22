@@ -11,8 +11,9 @@ use async_std::{
 };
 use async_tls::TlsAcceptor;
 use crate::kafka::Kafka;
+use crate::serve::*;
 use crate::settings::*;
-use crate::{read_logs, ConnectionState};
+use crate::read_logs;
 use crossbeam::channel::bounded;
 use dipstick::*;
 use log::*;

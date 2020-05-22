@@ -1,7 +1,8 @@
-extern crate chrono;
 /**
  * hotdog's main
  */
+extern crate async_trait;
+extern crate chrono;
 extern crate clap;
 extern crate config;
 extern crate dipstick;
@@ -23,8 +24,7 @@ use async_std::{
 };
 use chrono::prelude::*;
 use clap::{App, Arg};
-use crossbeam::channel::Sender;
-use dipstick::*;
+use dipstick::{Input, InputScope, Prefixed, StatsdScope, Statsd};
 use handlebars::Handlebars;
 use log::*;
 use std::collections::HashMap;
@@ -33,23 +33,17 @@ mod kafka;
 mod merge;
 mod parse;
 mod rules;
+mod serve;
 mod serve_plain;
 mod serve_tls;
 mod settings;
 
 use kafka::{KafkaMessage};
+use serve::ConnectionState;
 use settings::*;
 
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+type HDResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-/**
- * ConnectionState carries the necessary types of state into new tasks for handling connections
- */
-pub struct ConnectionState {
-    settings: Arc<Settings>,
-    metrics: Arc<StatsdScope>,
-    sender: Sender<KafkaMessage>,
-}
 
 /**
  * RuleState exists to help carry state into merge/replacement functions and exists only during the
@@ -61,7 +55,7 @@ struct RuleState<'a> {
     metrics: Arc<StatsdScope>,
 }
 
-fn main() -> Result<()> {
+fn main() -> HDResult<()> {
     pretty_env_logger::init();
 
     let matches = App::new("Hotdog")
@@ -122,7 +116,10 @@ fn main() -> Result<()> {
         }
         _ => {
             info!("Serving in plaintext mode");
-            task::block_on(crate::serve_plain::accept_loop(addr, settings.clone(), metrics))
+            let server = crate::serve_plain::PlaintextServer { };
+            task::block_on(server.accept_loop(addr, settings.clone(), metrics));;
+            // TODO: bubble up Result properly
+            Ok(())
         }
     }
 }
@@ -177,7 +174,7 @@ fn precompile_templates(hb: &mut Handlebars, settings: Arc<Settings>) -> bool {
 pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
     reader: BufReader<R>,
     state: ConnectionState,
-) -> Result<()> {
+) -> HDResult<()> {
     let mut lines = reader.lines();
     let lines_count = state.metrics.counter("lines");
 
@@ -369,7 +366,7 @@ fn perform_merge(
     buffer: &str,
     template_id: &str,
     state: &RuleState,
-) -> std::result::Result<String, String> {
+) -> Result<String, String> {
     if let Ok(mut msg_json) = serde_json::from_str(&buffer) {
         if let Ok(rendered) = state.hb.render(template_id, &state.variables) {
             let to_merge: serde_json::Value = serde_json::from_str(&rendered)
