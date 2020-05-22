@@ -1,6 +1,3 @@
-use crate::kafka::Kafka;
-use crate::settings::*;
-use crate::{read_logs, ConnectionState};
 /**
  * This module handles the necessary configuration to serve over TLS
  */
@@ -13,6 +10,9 @@ use async_std::{
     task,
 };
 use async_tls::TlsAcceptor;
+use crate::kafka::Kafka;
+use crate::settings::*;
+use crate::{read_logs, ConnectionState};
 use crossbeam::channel::bounded;
 use dipstick::*;
 use log::*;

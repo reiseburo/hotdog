@@ -17,7 +17,6 @@ extern crate syslog_rfc5424;
 
 use async_std::{
     io::BufReader,
-    net::{TcpListener, ToSocketAddrs},
     prelude::*,
     sync::Arc,
     task,
@@ -34,10 +33,11 @@ mod kafka;
 mod merge;
 mod parse;
 mod rules;
+mod serve_plain;
 mod serve_tls;
 mod settings;
 
-use kafka::{Kafka, KafkaMessage};
+use kafka::{KafkaMessage};
 use settings::*;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -122,59 +122,11 @@ fn main() -> Result<()> {
         }
         _ => {
             info!("Serving in plaintext mode");
-            task::block_on(accept_loop(addr, settings.clone(), metrics))
+            task::block_on(crate::serve_plain::accept_loop(addr, settings.clone(), metrics))
         }
     }
 }
 
-/**
- * accept_loop will simply create the socket listener and dispatch newly accepted connections to
- * the connection_loop function
- */
-async fn accept_loop(
-    addr: impl ToSocketAddrs,
-    settings: Arc<Settings>,
-    metrics: Arc<StatsdScope>,
-) -> Result<()> {
-    let mut kafka = Kafka::new(settings.global.kafka.buffer);
-
-    if !kafka.connect(
-        &settings.global.kafka.conf,
-        Some(settings.global.kafka.timeout_ms),
-    ) {
-        error!("Cannot start hotdog without a workable broker connection");
-        return Ok(());
-    }
-    kafka.with_metrics(metrics.clone());
-    let sender = kafka.get_sender();
-
-    task::spawn(async move {
-        debug!("starting sendloop");
-        kafka.sendloop();
-    });
-
-    let listener = TcpListener::bind(addr).await?;
-    let mut incoming = listener.incoming();
-
-    while let Some(stream) = incoming.next().await {
-        let stream = stream?;
-        debug!("Accepting from: {}", stream.peer_addr()?);
-        let reader = BufReader::new(stream);
-        let state = ConnectionState {
-            settings: settings.clone(),
-            metrics: metrics.clone(),
-            sender: sender.clone(),
-        };
-
-        task::spawn(async move {
-            if let Err(e) = read_logs(reader, state).await {
-                error!("Failed to read logs: {:?}", e);
-            }
-            debug!("Connection dropped");
-        });
-    }
-    Ok(())
-}
 
 fn template_id_for(rule: &Rule, index: usize) -> String {
     format!("{}-{}", rule.uuid, index)
@@ -519,7 +471,6 @@ mod tests {
         let hash = HashMap::<String, String>::new();
         let state = rule_state(&hb, &hash);
 
-        let to_merge = r#"{}"#;
         let output = perform_merge("invalid", template_id, &state);
         let expected = Err("Not JSON".to_string());
         assert_eq!(output, expected);
