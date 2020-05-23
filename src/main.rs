@@ -39,7 +39,7 @@ mod serve_tls;
 mod settings;
 
 use kafka::{KafkaMessage};
-use serve::ConnectionState;
+use serve::*;
 use settings::*;
 
 type HDResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -112,12 +112,18 @@ fn main() -> HDResult<()> {
                 addr,
                 settings.clone(),
                 metrics,
-            ))
+            ));
+            // TODO: bubble up Result properly
+            Ok(())
         }
         _ => {
             info!("Serving in plaintext mode");
-            let server = crate::serve_plain::PlaintextServer { };
-            task::block_on(server.accept_loop(addr, settings.clone(), metrics));;
+            let state = ServerState {
+                settings: settings.clone(),
+                metrics,
+            };
+            let mut server = crate::serve_plain::PlaintextServer { };
+            task::block_on(server.accept_loop(&addr, state));
             // TODO: bubble up Result properly
             Ok(())
         }

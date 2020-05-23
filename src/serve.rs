@@ -3,8 +3,11 @@
  */
 
 use async_std::{
+    io::BufReader,
     net::*,
+    prelude::*,
     sync::Arc,
+    task
 };
 use async_trait::async_trait;
 use crate::kafka::{Kafka, KafkaMessage};
@@ -48,6 +51,7 @@ pub struct ServerState {
  */
 pub enum ServerError {
     GenericError,
+    KafkaConnectError,
     IOError {
         err: std::io::Error,
     },
@@ -70,27 +74,80 @@ impl std::convert::From<std::io::Error> for ServerError {
 #[async_trait]
 pub trait Server {
     /**
-     * Connect to the Kafka broker(s) specified in the settings and return Some() with a Kafka
-     * struct if it exists
+     * Bootstrap can/should be overridden by implementations which need to perform some work prior
+     * to the creation of the TcpListener and the incoming connection loop
      */
-    fn kafka_connect(&self, settings: Arc<Settings>) -> Option<Kafka> {
-        let mut kafka = Kafka::new(settings.global.kafka.buffer);
-
-        if !kafka.connect(
-            &settings.global.kafka.conf,
-            Some(settings.global.kafka.timeout_ms),
-        ) {
-            error!("Cannot start hotdog without a workable broker connection");
-            return None;
-        }
-        Some(kafka)
-    }
-
-    fn bootstrap(&mut self) -> Result<(), ServerError> {
+    fn bootstrap(&mut self, state: &ServerState) -> Result<(), ServerError> {
         Ok(())
     }
 
-    async fn run_kafka(&self) -> Result<(), ServerError> {
+    /**
+     * Shutdown scan/should be overridden by implementations which need to perform some work after
+     * the termination of the connection accept loop
+     */
+    fn shutdown(&self, state: &ServerState) -> Result<(), ServerError> {
+        Ok(())
+    }
+
+    /*
+     * Handle a single connection
+    fn handle_connection(&self, stream: &mut TcpStream, state: ConnectionState) -> impl Future {
+        debug!("Accepting from: {}", stream.peer_addr()?);
+        let reader = BufReader::new(stream);
+
+        crate::read_logs(reader, state)
+    }
+    */
+
+
+    /**
+     * Accept connections on the addr
+     */
+    async fn accept_loop(&mut self,
+        addr: &str,
+        state: ServerState,
+        handler: &dyn FnOnce(&mut TcpStream, ConnectionState),
+    ) -> Result<(), ServerError> {
+        let mut addr = addr.to_socket_addrs().await?;
+        let addr = addr.next()
+            .expect(&format!("Could not turn {:?} into a listenable interface", addr));
+
+        let mut kafka = Kafka::new(state.settings.global.kafka.buffer);
+
+        if !kafka.connect(&state.settings.global.kafka.conf, Some(state.settings.global.kafka.timeout_ms)) {
+            error!("Cannot start hotdog without a workable broker connection");
+            return Err(ServerError::KafkaConnectError);
+        }
+
+        kafka.with_metrics(state.metrics.clone());
+        let sender = kafka.get_sender();
+
+        task::spawn(async move {
+            debug!("Starting Kafka sendloop");
+            kafka.sendloop();
+        });
+
+        self.bootstrap(&state)?;
+
+        let listener = TcpListener::bind(addr).await?;
+        let mut incoming = listener.incoming();
+
+        while let Some(stream) = incoming.next().await {
+            let stream = stream?;
+            debug!("Accepting from: {}", stream.peer_addr()?);
+            let state = ConnectionState {
+                settings: state.settings.clone(),
+                metrics: state.metrics.clone(),
+                sender: sender.clone(),
+            };
+
+            task::spawn(async move {
+                //self.handle_connection(&mut stream, state).await;
+            });
+        }
+
+        self.shutdown(&state)?;
+
         Ok(())
     }
 }

@@ -15,7 +15,7 @@ use crate::serve::*;
 use crate::settings::*;
 use crate::read_logs;
 use crossbeam::channel::bounded;
-use dipstick::*;
+use dipstick::{InputScope, StatsdScope};
 use log::*;
 use rustls::internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use rustls::{
@@ -23,6 +23,86 @@ use rustls::{
     ServerConfig,
 };
 use std::path::Path;
+
+use crate::serve::*;
+
+/**
+ * TlsServer is a syslog-over-TLS implementation, which will allow for receiving logs over a TLS
+ * encrypted channel.
+ *
+ * Currently client authentication is not supported
+ */
+pub struct TlsServer {
+}
+
+impl TlsServer {
+    async fn handle_connection(
+        acceptor: &TlsAcceptor,
+        tcp_stream: &mut TcpStream,
+        state: ConnectionState,
+    ) -> io::Result<()> {
+        let peer_addr = tcp_stream.peer_addr()?;
+        debug!("Accepted connection from: {}", peer_addr);
+
+        // Calling `acceptor.accept` will start the TLS handshake
+        let handshake = acceptor.accept(tcp_stream);
+        // The handshake is a future we can await to get an encrypted
+        // stream back.
+        let tls_stream = handshake.await?;
+        let reader = BufReader::new(tls_stream);
+
+        if let Err(e) = read_logs(reader, state).await {
+            error!("Failed to read logs properly: {:?}", e);
+        }
+        Ok(())
+    }
+    /**
+     * Generate the default ServerConfig needed for rustls to work properly in server mode
+     */
+    fn load_tls_config(&mut self, state: &ServerState) -> io::Result<ServerConfig> {
+        match &state.settings.global.listen.tls {
+            TlsType::CertAndKey { cert, key, ca } => {
+                let certs = load_certs(cert.as_path())?;
+                let mut keys = load_keys(key.as_path())?;
+
+                if keys.is_empty() {
+                    panic!("TLS key could not be properly loaded! This is fatal!");
+                }
+
+                let verifier = if ca.is_some() {
+                    let ca_path = ca.as_ref().unwrap();
+                    let mut store = RootCertStore::empty();
+                    if let Err(e) = store.add_pem_file(&mut std::io::BufReader::new(
+                        std::fs::File::open(ca_path.as_path())?,
+                    )) {
+                        error!("Failed to add the CA properly, certificate verification may not work as expected: {:?}", e);
+                    }
+                    AllowAnyAnonymousOrAuthenticatedClient::new(store)
+                } else {
+                    NoClientAuth::new()
+                };
+
+                // we don't use client authentication
+                let mut config = ServerConfig::new(verifier);
+                config
+                    // set this server to use one cert together with the loaded private key
+                    .set_single_cert(certs, keys.remove(0))
+                    .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+
+                Ok(config)
+            }
+            _ => {
+                panic!("Attempted to load a TLS configuration despite TLS not being enabled");
+            }
+        }
+    }
+}
+
+impl Server for TlsServer {
+    fn bootstrap(&mut self, state: &ServerState) -> Result<(), ServerError> {
+        Ok(())
+    }
+}
 
 /// Load the passed certificates file
 fn load_certs(path: &Path) -> io::Result<Vec<Certificate>> {
@@ -97,7 +177,7 @@ pub async fn accept_loop(
     addr: impl ToSocketAddrs,
     settings: Arc<Settings>,
     metrics: Arc<StatsdScope>,
-) -> Result<()> {
+) -> Result<(), ServerError> {
     let config = load_tls_config(&settings)?;
 
     let mut kafka = Kafka::new(settings.global.kafka.buffer);
