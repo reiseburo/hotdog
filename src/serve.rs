@@ -7,7 +7,8 @@ use crate::settings::Settings;
  */
 use async_std::{io::BufReader, net::*, prelude::*, sync::Arc, task};
 use async_trait::async_trait;
-use dipstick::StatsdScope;
+use crossbeam::channel::bounded;
+use dipstick::{InputScope, StatsdScope};
 use log::*;
 
 pub struct ServerState {
@@ -90,6 +91,23 @@ pub trait Server {
             kafka.sendloop();
         });
 
+        /*
+         * Create a crossbeam channel to keep up with inbound connections
+         */
+        let (conn_tx, conn_rx) = bounded::<i64>(1);
+        let counter = state.metrics.gauge("connections");
+
+        task::spawn(async move {
+            let mut connections = 0;
+            loop {
+                if let Ok(count) = conn_rx.recv() {
+                    connections += count;
+                    debug!("Connection count now {}", connections);
+                    counter.value(connections);
+                }
+            }
+        });
+
         self.bootstrap(&state)?;
 
         let listener = TcpListener::bind(addr).await?;
@@ -98,6 +116,8 @@ pub trait Server {
         while let Some(stream) = incoming.next().await {
             let stream = stream?;
             debug!("Accepting from: {}", stream.peer_addr()?);
+            conn_tx.send(1).expect("Failed to send a connection count increment, something is seriously wrong");
+
             let connection = Connection::new(
                 state.settings.clone(),
                 state.metrics.clone(),
@@ -106,6 +126,7 @@ pub trait Server {
             if let Err(e) = self.handle_connection(stream, connection) {
                 error!("Failed to handle_connection properly: {:?}", e);
             }
+            conn_tx.send(-1).expect("Failed to send a connection count decrement, something is seriously wrong");
         }
 
         self.shutdown(&state)?;
