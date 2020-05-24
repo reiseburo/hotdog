@@ -16,12 +16,9 @@ extern crate serde_regex;
 extern crate syslog_loose;
 extern crate syslog_rfc5424;
 
-use async_std::{
-    sync::Arc,
-    task,
-};
+use async_std::{sync::Arc, task};
 use clap::{App, Arg};
-use dipstick::{Input, Prefixed, StatsdScope, Statsd};
+use dipstick::{Input, Prefixed, Statsd, StatsdScope};
 use log::*;
 use std::collections::HashMap;
 
@@ -39,7 +36,6 @@ use serve::*;
 use settings::*;
 
 type HDResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
-
 
 /**
  * RuleState exists to help carry state into merge/replacement functions and exists only during the
@@ -116,7 +112,7 @@ fn main() -> HDResult<()> {
         }
         _ => {
             info!("Serving in plaintext mode");
-            let mut server = crate::serve_plain::PlaintextServer { };
+            let mut server = crate::serve_plain::PlaintextServer {};
             task::block_on(server.accept_loop(&addr, state));
             // TODO: bubble up Result properly
             Ok(())

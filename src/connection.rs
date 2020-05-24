@@ -1,19 +1,15 @@
-/**
- * The connection module is responsible for handling everything pertaining to a single inbound TCP
- * connection. 
- */
-use async_std::{
-    io::BufReader,
-    prelude::*,
-    sync::Arc,
-};
-use chrono::prelude::*;
-use crate::kafka::{KafkaMessage};
+use crate::kafka::KafkaMessage;
 use crate::merge;
 use crate::parse;
 use crate::settings::*;
+/**
+ * The connection module is responsible for handling everything pertaining to a single inbound TCP
+ * connection.
+ */
+use async_std::{io::BufReader, prelude::*, sync::Arc};
+use chrono::prelude::*;
 use crossbeam::channel::Sender;
-use dipstick::{Input, InputScope, Prefixed, StatsdScope, Statsd};
+use dipstick::{Input, InputScope, Prefixed, Statsd, StatsdScope};
 use handlebars::Handlebars;
 use log::*;
 use std::collections::HashMap;
@@ -23,9 +19,7 @@ use crate::RuleState;
 
 pub enum ConnectionError {
     GenericError,
-    IOError {
-        err: std::io::Error,
-    },
+    IOError { err: std::io::Error },
 }
 impl std::convert::From<std::io::Error> for ConnectionError {
     fn from(err: std::io::Error) -> ConnectionError {
@@ -35,7 +29,7 @@ impl std::convert::From<std::io::Error> for ConnectionError {
 
 pub struct Connection {
     /**
-     * A reference to the global Settings object for all configuration information 
+     * A reference to the global Settings object for all configuration information
      */
     settings: Arc<Settings>,
     /**
@@ -50,7 +44,11 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn new(settings: Arc<Settings>, metrics: Arc<StatsdScope>, sender: Sender<KafkaMessage>) -> Self {
+    pub fn new(
+        settings: Arc<Settings>,
+        metrics: Arc<StatsdScope>,
+        sender: Sender<KafkaMessage>,
+    ) -> Self {
         Connection {
             settings,
             metrics,
@@ -58,18 +56,13 @@ impl Connection {
         }
     }
 
-    pub fn bootstrap(&mut self) -> Result<(), ConnectionError> {
-        // TODO precompilation logic here
-        Ok(())
-    }
-
     /**
-    * connection_loop is responsible for handling incoming syslog streams connections
-    *
-    */
+     * connection_loop is responsible for handling incoming syslog streams connections
+     *
+     */
     pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
         &self,
-        reader: BufReader<R>
+        reader: BufReader<R>,
     ) -> Result<(), ConnectionError> {
         let mut lines = reader.lines();
         let lines_count = self.metrics.counter("lines");
@@ -93,8 +86,8 @@ impl Connection {
                 continue;
             }
             /*
-            * Now that we've logged the error, let's unpack and bubble the error anyways
-            */
+             * Now that we've logged the error, let's unpack and bubble the error anyways
+             */
             let msg = parsed.unwrap();
             lines_count.count(1);
             let mut continue_rules = true;
@@ -102,9 +95,9 @@ impl Connection {
 
             for rule in self.settings.rules.iter() {
                 /*
-                * If we have been told to stop processing rules, then it's time to bail on this log
-                * message
-                */
+                 * If we have been told to stop processing rules, then it's time to bail on this log
+                 * message
+                 */
                 if !continue_rules {
                     break;
                 }
@@ -120,8 +113,8 @@ impl Connection {
                 match rule.field {
                     Field::Msg => {
                         /*
-                        * Check to see if we have a jmespath first
-                        */
+                         * Check to see if we have a jmespath first
+                         */
                         if !rule.jmespath.is_empty() {
                             let expr = jmespath::compile(&rule.jmespath).unwrap();
                             if let Ok(data) = jmespath::Variable::from_json(&msg.msg) {
@@ -145,7 +138,10 @@ impl Connection {
                                 for name in regex.capture_names() {
                                     if let Some(name) = name {
                                         if let Some(value) = captures.name(name) {
-                                            hash.insert(name.to_string(), String::from(value.as_str()));
+                                            hash.insert(
+                                                name.to_string(),
+                                                String::from(value.as_str()),
+                                            );
                                         }
                                     }
                                 }
@@ -158,8 +154,8 @@ impl Connection {
                 }
 
                 /*
-                * This specific didn't match, so onto the next one
-                */
+                 * This specific didn't match, so onto the next one
+                 */
                 if !rule_matches {
                     continue;
                 }
@@ -171,17 +167,17 @@ impl Connection {
                 };
 
                 /*
-                * Process the actions one the rule has matched
-                */
+                 * Process the actions one the rule has matched
+                 */
                 for index in 0..rule.actions.len() {
                     let action = &rule.actions[index];
 
                     match action {
                         Action::Forward { topic } => {
                             /*
-                            * quick check on our internal queue, if it's full, skip all the processing
-                            * and move onto the next message
-                            */
+                             * quick check on our internal queue, if it's full, skip all the processing
+                             * and move onto the next message
+                             */
                             if self.sender.is_full() {
                                 error!("Internal Kafka queue is full! Dropping 1 message");
                                 self.metrics.counter("error.full_internal_queue").count(1);
@@ -190,9 +186,9 @@ impl Connection {
                             }
 
                             /*
-                            * If a custom output was never defined, just take the
-                            * raw message and pass that along.
-                            */
+                             * If a custom output was never defined, just take the
+                             * raw message and pass that along.
+                             */
                             if output.is_empty() {
                                 output = String::from(&msg.msg);
                             }
@@ -200,9 +196,9 @@ impl Connection {
                             if let Ok(actual_topic) = hb.render_template(&topic, &hash) {
                                 debug!("Enqueueing for topic: `{}`", actual_topic);
                                 /*
-                                * `output` is consumed by send_to_kafka, so the rest of the rules
-                                * should be skipped.
-                                */
+                                 * `output` is consumed by send_to_kafka, so the rest of the rules
+                                 * should be skipped.
+                                 */
                                 let kmsg = KafkaMessage::new(actual_topic, output);
                                 match self.sender.try_send(kmsg) {
                                     Err(err) => {
@@ -304,11 +300,7 @@ fn precompile_templates(hb: &mut Handlebars, settings: Arc<Settings>) -> bool {
 /**
  * perform_merge will generate the buffer resulting of the JSON merge
  */
-fn perform_merge(
-    buffer: &str,
-    template_id: &str,
-    state: &RuleState,
-) -> Result<String, String> {
+fn perform_merge(buffer: &str, template_id: &str, state: &RuleState) -> Result<String, String> {
     if let Ok(mut msg_json) = serde_json::from_str(&buffer) {
         if let Ok(rendered) = state.hb.render(template_id, &state.variables) {
             let to_merge: serde_json::Value = serde_json::from_str(&rendered)

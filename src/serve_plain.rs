@@ -3,9 +3,6 @@
  */
 use crate::serve::*;
 
-pub struct PlaintextServer {
-}
+pub struct PlaintextServer {}
 
-impl Server for PlaintextServer {
-}
-
+impl Server for PlaintextServer {}

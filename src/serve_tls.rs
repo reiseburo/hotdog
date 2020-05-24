@@ -1,17 +1,10 @@
+use crate::serve::*;
+use crate::settings::*;
 /**
  * This module handles the necessary configuration to serve over TLS
  */
-use async_std::{
-    io,
-    io::BufReader,
-    net::{TcpStream},
-    prelude::*,
-    sync::Arc,
-    task,
-};
+use async_std::{io, io::BufReader, net::TcpStream, prelude::*, sync::Arc, task};
 use async_tls::TlsAcceptor;
-use crate::serve::*;
-use crate::settings::*;
 use log::*;
 use rustls::internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use rustls::{
@@ -35,14 +28,11 @@ pub struct TlsServer {
 
 impl TlsServer {
     pub fn new(state: &ServerState) -> Self {
-        let config = load_tls_config(state).expect("Failed to generate the TLS ServerConfig properly");
+        let config =
+            load_tls_config(state).expect("Failed to generate the TLS ServerConfig properly");
         let acceptor = TlsAcceptor::from(Arc::new(config));
-        TlsServer {
-            acceptor,
-        }
+        TlsServer { acceptor }
     }
-
-
 }
 
 impl Server for TlsServer {
@@ -50,27 +40,33 @@ impl Server for TlsServer {
         Ok(())
     }
 
-    fn handle_connection(&self, stream: &mut TcpStream, connection: Connection) -> Result<(), std::io::Error> {
+    fn handle_connection(
+        &self,
+        stream: TcpStream,
+        connection: Connection,
+    ) -> Result<(), std::io::Error> {
         debug!("Accepting from: {}", stream.peer_addr()?);
 
         // Calling `acceptor.accept` will start the TLS handshake
         let handshake = self.acceptor.accept(stream);
-        // The handshake is a future we can await to get an encrypted
-        // stream back.
-        //let tls_stream = handshake.await?;
-        //let reader = BufReader::new(tls_stream);
 
-        /*
-         * TODO enter the connection runloop
-         */
+        task::spawn(async move {
+            // The handshake is a future we can await to get an encrypted
+            // stream back.
+            if let Ok(tls_stream) = handshake.await {
+                let reader = BufReader::new(tls_stream);
+                connection.read_logs(reader).await;
+            } else {
+                error!("Unable to establish a TLS Stream for client!");
+            }
+        });
         Ok(())
     }
 }
 
-
 /**
-    * Generate the default ServerConfig needed for rustls to work properly in server mode
-    */
+ * Generate the default ServerConfig needed for rustls to work properly in server mode
+ */
 fn load_tls_config(state: &ServerState) -> io::Result<ServerConfig> {
     match &state.settings.global.listen.tls {
         TlsType::CertAndKey { cert, key, ca } => {
