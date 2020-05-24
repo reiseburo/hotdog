@@ -7,6 +7,7 @@ use crate::settings::*;
  */
 use async_std::{io, io::BufReader, net::TcpStream, sync::Arc, task};
 use async_tls::TlsAcceptor;
+use crossbeam::channel::Sender;
 use log::*;
 use rustls::internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use rustls::{
@@ -43,6 +44,7 @@ impl Server for TlsServer {
         &self,
         stream: TcpStream,
         connection: Connection,
+        close_channel: Sender<i64>,
     ) -> Result<(), std::io::Error> {
         debug!("Accepting from: {}", stream.peer_addr()?);
 
@@ -55,12 +57,18 @@ impl Server for TlsServer {
             match handshake.await {
                 Ok(tls_stream) => {
                     let reader = BufReader::new(tls_stream);
-                    connection.read_logs(reader).await
+
+                    if let Err(e) = connection.read_logs(reader).await {
+                        error!("Failure occurred while read_logs executed: {:?}", e);
+                    }
                 }
                 Err(err) => {
                     error!("Unable to establish a TLS Stream for client! {:?}", err);
-                    Err(errors::HotdogError::IOError { err })
                 }
+            };
+
+            if let Err(e) = close_channel.send(-1) {
+                error!("Somehow failed to track the channel close: {:?}", e);
             }
         });
         Ok(())

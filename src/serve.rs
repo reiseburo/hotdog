@@ -7,7 +7,7 @@ use crate::settings::Settings;
  */
 use async_std::{io::BufReader, net::*, prelude::*, sync::Arc, task};
 use async_trait::async_trait;
-use crossbeam::channel::bounded;
+use crossbeam::channel::{bounded, Sender};
 use dipstick::{InputScope, StatsdScope};
 use log::*;
 
@@ -44,18 +44,29 @@ pub trait Server {
         Ok(())
     }
 
-    /*
+    /**
      * Handle a single connection
+     *
+     * The close_channel parameter must be a clone of our connection-tracking channel Sender
      */
     fn handle_connection(
         &self,
         stream: TcpStream,
         connection: Connection,
+        close_channel: Sender<i64>,
     ) -> Result<(), std::io::Error> {
         debug!("Accepting from: {}", stream.peer_addr()?);
         let reader = BufReader::new(stream);
 
-        task::spawn(async move { connection.read_logs(reader).await });
+        task::spawn(async move {
+            if let Err(e) = connection.read_logs(reader).await {
+                error!("Failure occurred while read_logs executed: {:?}", e);
+            }
+
+            if let Err(e) = close_channel.send(-1) {
+                error!("Somehow failed to track the channel close: {:?}", e);
+            }
+        });
 
         Ok(())
     }
@@ -123,10 +134,9 @@ pub trait Server {
                 state.metrics.clone(),
                 sender.clone(),
             );
-            if let Err(e) = self.handle_connection(stream, connection) {
+            if let Err(e) = self.handle_connection(stream, connection, conn_tx.clone()) {
                 error!("Failed to handle_connection properly: {:?}", e);
             }
-            conn_tx.send(-1).expect("Failed to send a connection count decrement, something is seriously wrong");
         }
 
         self.shutdown(&state)?;
