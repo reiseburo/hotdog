@@ -10,30 +10,11 @@ use async_std::{
     task
 };
 use async_trait::async_trait;
-use crate::kafka::{Kafka, KafkaMessage};
+use crate::connection::*;
+use crate::kafka::Kafka;
 use crate::settings::Settings;
-use crossbeam::channel::Sender;
 use dipstick::StatsdScope;
 use log::*;
-
-/**
- * ConnectionState carries the necessary types of state into new tasks for handling connections
- */
-pub struct ConnectionState {
-    /**
-     * A reference to the global Settings object for all configuration information 
-     */
-    pub settings: Arc<Settings>,
-    /**
-     * A valid and constructed StatsdScope for sending metrics along
-     */
-    pub metrics: Arc<StatsdScope>,
-    /**
-     * The sender-side of the channel to our Kafka connection, allowing the logs read in to be
-     * sent over to the Kafka handler
-     */
-    pub sender: Sender<KafkaMessage>,
-}
 
 pub struct ServerState {
     /**
@@ -91,14 +72,18 @@ pub trait Server {
 
     /*
      * Handle a single connection
-    fn handle_connection(&self, stream: &mut TcpStream, state: ConnectionState) -> impl Future {
+     */
+    fn handle_connection(&self, stream: &mut TcpStream, connection: Connection) -> Result<(), std::io::Error> {
         debug!("Accepting from: {}", stream.peer_addr()?);
         let reader = BufReader::new(stream);
 
-        crate::read_logs(reader, state)
+        task::spawn(async move {
+            /*
+             * TODO enter into connection runloop
+             */
+        });
+        Ok(())
     }
-    */
-
 
     /**
      * Accept connections on the addr
@@ -106,7 +91,6 @@ pub trait Server {
     async fn accept_loop(&mut self,
         addr: &str,
         state: ServerState,
-        handler: &dyn FnOnce(&mut TcpStream, ConnectionState),
     ) -> Result<(), ServerError> {
         let mut addr = addr.to_socket_addrs().await?;
         let addr = addr.next()
@@ -133,17 +117,12 @@ pub trait Server {
         let mut incoming = listener.incoming();
 
         while let Some(stream) = incoming.next().await {
-            let stream = stream?;
+            let mut stream = stream?;
             debug!("Accepting from: {}", stream.peer_addr()?);
-            let state = ConnectionState {
-                settings: state.settings.clone(),
-                metrics: state.metrics.clone(),
-                sender: sender.clone(),
-            };
-
-            task::spawn(async move {
-                //self.handle_connection(&mut stream, state).await;
-            });
+            let connection = Connection::new(state.settings.clone(),
+                                            state.metrics.clone(),
+                                            sender.clone());
+            self.handle_connection(&mut stream, connection);
         }
 
         self.shutdown(&state)?;
