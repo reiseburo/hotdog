@@ -1,3 +1,4 @@
+use crate::errors;
 use crate::settings::*;
 /**
  * Rules processing module
@@ -6,9 +7,10 @@ use crate::settings::*;
 use async_std::{fs::File, io::BufReader, prelude::*, sync::Arc};
 use log::*;
 
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
-
-pub async fn test_rules(file_name: &str, settings: Arc<Settings>) -> Result<()> {
+pub async fn test_rules(
+    file_name: &str,
+    settings: Arc<Settings>,
+) -> Result<(), errors::HotdogError> {
     let file = File::open(file_name)
         .await
         .expect("Failed to open the file");

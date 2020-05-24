@@ -81,6 +81,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-trait"
+version = "0.1.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26c4f3195085c36ea8d24d32b2f828d23296a9370a28aa39d111f6f16bef9f3b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "atomic_refcell"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -532,10 +543,11 @@ dependencies = [
 
 [[package]]
 name = "hotdog"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "async-std",
  "async-tls",
+ "async-trait",
  "chrono",
  "clap",
  "config",
