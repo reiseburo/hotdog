@@ -1,3 +1,4 @@
+use crate::errors;
 use crate::kafka::KafkaMessage;
 use crate::merge;
 use crate::parse;
@@ -9,22 +10,19 @@ use crate::settings::*;
 use async_std::{io::BufReader, prelude::*, sync::Arc};
 use chrono::prelude::*;
 use crossbeam::channel::Sender;
-use dipstick::{Input, InputScope, Prefixed, Statsd, StatsdScope};
+use dipstick::{InputScope, StatsdScope};
 use handlebars::Handlebars;
 use log::*;
 use std::collections::HashMap;
 
-// TODO: remove from root
-use crate::RuleState;
-
-pub enum ConnectionError {
-    GenericError,
-    IOError { err: std::io::Error },
-}
-impl std::convert::From<std::io::Error> for ConnectionError {
-    fn from(err: std::io::Error) -> ConnectionError {
-        ConnectionError::IOError { err }
-    }
+/**
+ * RuleState exists to help carry state into merge/replacement functions and exists only during the
+ * processing of rules
+ */
+struct RuleState<'a> {
+    variables: &'a HashMap<String, String>,
+    hb: &'a handlebars::Handlebars<'a>,
+    metrics: Arc<StatsdScope>,
 }
 
 pub struct Connection {
@@ -63,7 +61,7 @@ impl Connection {
     pub async fn read_logs<R: async_std::io::Read + std::marker::Unpin>(
         &self,
         reader: BufReader<R>,
-    ) -> Result<(), ConnectionError> {
+    ) -> Result<(), errors::HotdogError> {
         let mut lines = reader.lines();
         let lines_count = self.metrics.counter("lines");
 

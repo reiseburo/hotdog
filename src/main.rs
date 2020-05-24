@@ -18,11 +18,11 @@ extern crate syslog_rfc5424;
 
 use async_std::{sync::Arc, task};
 use clap::{App, Arg};
-use dipstick::{Input, Prefixed, Statsd, StatsdScope};
+use dipstick::{Input, Prefixed, Statsd};
 use log::*;
-use std::collections::HashMap;
 
 mod connection;
+mod errors;
 mod kafka;
 mod merge;
 mod parse;
@@ -35,19 +35,7 @@ mod settings;
 use serve::*;
 use settings::*;
 
-type HDResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
-
-/**
- * RuleState exists to help carry state into merge/replacement functions and exists only during the
- * processing of rules
- */
-struct RuleState<'a> {
-    variables: &'a HashMap<String, String>,
-    hb: &'a handlebars::Handlebars<'a>,
-    metrics: Arc<StatsdScope>,
-}
-
-fn main() -> HDResult<()> {
+fn main() -> Result<(), errors::HotdogError> {
     pretty_env_logger::init();
 
     let matches = App::new("Hotdog")
@@ -106,16 +94,12 @@ fn main() -> HDResult<()> {
         } => {
             info!("Serving in TLS mode");
             let mut server = crate::serve_tls::TlsServer::new(&state);
-            task::block_on(server.accept_loop(&addr, state));
-            // TODO: bubble up Result properly
-            Ok(())
+            task::block_on(server.accept_loop(&addr, state))
         }
         _ => {
             info!("Serving in plaintext mode");
             let mut server = crate::serve_plain::PlaintextServer {};
-            task::block_on(server.accept_loop(&addr, state));
-            // TODO: bubble up Result properly
-            Ok(())
+            task::block_on(server.accept_loop(&addr, state))
         }
     }
 }

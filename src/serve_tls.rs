@@ -1,9 +1,11 @@
+use crate::connection::*;
+use crate::errors;
 use crate::serve::*;
 use crate::settings::*;
 /**
  * This module handles the necessary configuration to serve over TLS
  */
-use async_std::{io, io::BufReader, net::TcpStream, prelude::*, sync::Arc, task};
+use async_std::{io, io::BufReader, net::TcpStream, sync::Arc, task};
 use async_tls::TlsAcceptor;
 use log::*;
 use rustls::internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
@@ -12,9 +14,6 @@ use rustls::{
     ServerConfig,
 };
 use std::path::Path;
-
-use crate::connection::*;
-use crate::serve::*;
 
 /**
  * TlsServer is a syslog-over-TLS implementation, which will allow for receiving logs over a TLS
@@ -36,7 +35,7 @@ impl TlsServer {
 }
 
 impl Server for TlsServer {
-    fn bootstrap(&mut self, _state: &ServerState) -> Result<(), ServerError> {
+    fn bootstrap(&mut self, _state: &ServerState) -> Result<(), errors::HotdogError> {
         Ok(())
     }
 
@@ -53,11 +52,15 @@ impl Server for TlsServer {
         task::spawn(async move {
             // The handshake is a future we can await to get an encrypted
             // stream back.
-            if let Ok(tls_stream) = handshake.await {
-                let reader = BufReader::new(tls_stream);
-                connection.read_logs(reader).await;
-            } else {
-                error!("Unable to establish a TLS Stream for client!");
+            match handshake.await {
+                Ok(tls_stream) => {
+                    let reader = BufReader::new(tls_stream);
+                    connection.read_logs(reader).await
+                }
+                Err(err) => {
+                    error!("Unable to establish a TLS Stream for client! {:?}", err);
+                    Err(errors::HotdogError::IOError { err })
+                }
             }
         });
         Ok(())

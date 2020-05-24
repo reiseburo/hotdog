@@ -1,4 +1,5 @@
 use crate::connection::*;
+use crate::errors;
 use crate::kafka::Kafka;
 use crate::settings::Settings;
 /**
@@ -21,24 +22,6 @@ pub struct ServerState {
 }
 
 /**
- * A generic enum to wrap some of the potential errors a server can bubble up
- */
-pub enum ServerError {
-    GenericError,
-    KafkaConnectError,
-    IOError { err: std::io::Error },
-}
-
-/**
- * Allow standard io::Errors to be wrapped in a ServerError type
- */
-impl std::convert::From<std::io::Error> for ServerError {
-    fn from(err: std::io::Error) -> ServerError {
-        ServerError::IOError { err }
-    }
-}
-
-/**
  * The Server trait describes the necessary functionality to implement a new hotdog backend server
  * which can receive syslog messages
  */
@@ -48,7 +31,7 @@ pub trait Server {
      * Bootstrap can/should be overridden by implementations which need to perform some work prior
      * to the creation of the TcpListener and the incoming connection loop
      */
-    fn bootstrap(&mut self, state: &ServerState) -> Result<(), ServerError> {
+    fn bootstrap(&mut self, _state: &ServerState) -> Result<(), errors::HotdogError> {
         Ok(())
     }
 
@@ -56,7 +39,7 @@ pub trait Server {
      * Shutdown scan/should be overridden by implementations which need to perform some work after
      * the termination of the connection accept loop
      */
-    fn shutdown(&self, state: &ServerState) -> Result<(), ServerError> {
+    fn shutdown(&self, _state: &ServerState) -> Result<(), errors::HotdogError> {
         Ok(())
     }
 
@@ -71,9 +54,7 @@ pub trait Server {
         debug!("Accepting from: {}", stream.peer_addr()?);
         let reader = BufReader::new(stream);
 
-        task::spawn(async move {
-            connection.read_logs(reader).await;
-        });
+        task::spawn(async move { connection.read_logs(reader).await });
 
         Ok(())
     }
@@ -81,12 +62,15 @@ pub trait Server {
     /**
      * Accept connections on the addr
      */
-    async fn accept_loop(&mut self, addr: &str, state: ServerState) -> Result<(), ServerError> {
+    async fn accept_loop(
+        &mut self,
+        addr: &str,
+        state: ServerState,
+    ) -> Result<(), errors::HotdogError> {
         let mut addr = addr.to_socket_addrs().await?;
-        let addr = addr.next().expect(&format!(
-            "Could not turn {:?} into a listenable interface",
-            addr
-        ));
+        let addr = addr
+            .next()
+            .unwrap_or_else(|| panic!("Could not turn {:?} into a listenable interface", addr));
 
         let mut kafka = Kafka::new(state.settings.global.kafka.buffer);
 
@@ -95,7 +79,7 @@ pub trait Server {
             Some(state.settings.global.kafka.timeout_ms),
         ) {
             error!("Cannot start hotdog without a workable broker connection");
-            return Err(ServerError::KafkaConnectError);
+            return Err(errors::HotdogError::KafkaConnectError);
         }
 
         kafka.with_metrics(state.metrics.clone());
@@ -119,7 +103,9 @@ pub trait Server {
                 state.metrics.clone(),
                 sender.clone(),
             );
-            self.handle_connection(stream, connection);
+            if let Err(e) = self.handle_connection(stream, connection) {
+                error!("Failed to handle_connection properly: {:?}", e);
+            }
         }
 
         self.shutdown(&state)?;
