@@ -336,6 +336,7 @@ fn perform_merge(buffer: &str, template_id: &str, state: &RuleState) -> Result<S
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dipstick::{Input, Prefixed, Statsd};
 
     /**
      * Generating a test RuleState for consistent states in test
