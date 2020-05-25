@@ -8,33 +8,40 @@ edition = "2018"
 
 [dependencies]
 # Base asynchronous runtime
-async-std = "~1.5.0"
+async-std = { version = "~1.6.0", features = ["attributes"] }
+async-trait = "0.1.31"
 futures = { version = "~0.3.4", features = ["thread-pool"] }
-
-# For parsing the syslog formatted messages
-syslog_rfc5424 = "~0.6.1"
-syslog_loose = "0.2.0"
 
 # Needed for listening for TLS connections
 async-tls = "~0.7.0"
 rustls = "~0.17.0"
 
+# Handling command line options
+clap = { version = "~2.33.0", features = ["yaml"] }
+# Needed for time management
+chrono = "~0.4.11"
+# Handling configuration overlays
+config = { version = "~0.10.1", features = ["yaml"] }
 # Requiredfor communciating with across internal queues
 crossbeam = "~0.7"
+# Needed to report metrics of hotdog's performance
+dipstick = "~0.8.0"
+# Used for string replacements and other template based transformations
+handlebars = "~3.0.1"
+# used for rule matching on JSON
+#  The "sync" feature is undocumented but required in order to swap Rc for Arc
+#  in the crate, allowing it to be used with futures and threads properly
+jmespath = { git = "https://github.com/jmespath/jmespath.rs", features = ["sync"] }
+# Logging
+log = "~0.4.8"
+pretty_env_logger = "~0.3.1"
 
 # Needed for forwarding messages along to Kafka
 # including the SSL and SASL features to ensure that this can authenticate
 # against secure Kafka clusters, e.g. AWS MSK
 rdkafka = { version = "~0.23.1", features = ["ssl", "sasl"]}
-
-# Handling command line options
-clap = { version = "~2.33.0", features = ["yaml"] }
-# Handling configuration overlays
-config = { version = "~0.10.1", features = ["yaml"] }
-
-# Logging
-log = "~0.4.8"
-pretty_env_logger = "~0.3.1"
+# Used for rule matching
+regex = "~1.3.6"
 
 # Needed for deserializing JSON messages _and_ managing our configuration
 # effectively
@@ -44,28 +51,19 @@ serde_json = "~1.0.0"
 # Helpful to deserialize our regular expressions directly from the
 # configuration file
 serde_regex = "~0.4.0"
+# Needed to do clever enum/derive tricks for strings
+strum = "0.18.0"
+strum_macros = "0.18.0"
 
-# Used for rule matching
-regex = "~1.3.6"
+# For parsing the syslog formatted messages
+syslog_rfc5424 = "~0.6.1"
+syslog_loose = "0.2.0"
 
-# used for rule matching on JSON
-#  The "sync" feature is undocumented but required in order to swap Rc for Arc
-#  in the crate, allowing it to be used with futures and threads properly
-jmespath = { git = "https://github.com/jmespath/jmespath.rs", features = ["sync"] }
-
-# Needed to report metrics of hotdog's performance
-dipstick = "~0.8.0"
-
-# Used for string replacements and other template based transformations
-handlebars = "~3.0.1"
-
-# Needed for time management
-chrono = "~0.4.11"
+# Needed for the http-based health checks
+tide = "~0.9.0"
 
 # Needed to tag rules and actions with their own unique identifiers
 uuid = { version = "~0.8.1", features = ["v4"] }
-
-async-trait = "0.1.31"
 
 
 # Optimize the heck out of the release build, I have no idea what these flags

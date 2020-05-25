@@ -165,10 +165,17 @@ pub struct Metrics {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Status {
+    pub address: String,
+    pub port: u64,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Global {
-    pub listen: Listen,
     pub kafka: Kafka,
+    pub listen: Listen,
     pub metrics: Metrics,
+    pub status: Option<Status>,
 }
 
 #[derive(Debug, Deserialize)]

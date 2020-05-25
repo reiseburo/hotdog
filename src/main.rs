@@ -15,6 +15,9 @@ extern crate serde_derive;
 extern crate serde_regex;
 extern crate syslog_loose;
 extern crate syslog_rfc5424;
+extern crate strum;
+#[macro_use]
+extern crate strum_macros;
 
 use async_std::{sync::Arc, task};
 use clap::{App, Arg};
@@ -31,6 +34,7 @@ mod serve;
 mod serve_plain;
 mod serve_tls;
 mod settings;
+mod status;
 
 use serve::*;
 use settings::*;
@@ -63,6 +67,15 @@ fn main() -> Result<(), errors::HotdogError> {
 
     let settings_file = matches.value_of("config").unwrap_or("hotdog.yml");
     let settings = Arc::new(settings::load(settings_file));
+
+    if let Some(st) = &settings.global.status {
+        let listen_to = format!("{}:{}", st.address, st.port).to_string();
+        /*
+         * Need to spin this into its own separate thread since tide will blcok 
+         * up the async executor in this thread.
+         */
+        task::spawn(status::status_server(listen_to));
+    }
 
     if let Some(test_file) = matches.value_of("test") {
         return task::block_on(rules::test_rules(&test_file, settings));

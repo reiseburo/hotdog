@@ -221,6 +221,23 @@ global:
 ----
 
 
+[[yml-status]]
+==== Status
+
+The `global.status` configuration is fully _optional_ but when it is enabled `hotdog`
+will spin up an HTTP server on the configured `address` and `port` in order to provide
+real-time status information about the daemon's runtime to HTTP clients.
+
+
+.hotdog.yml
+[source,yaml]
+----
+global:
+  status:
+    address: 'localhost'
+    port: 8585
+----
+
 [[rules]]
 === Rules
 
