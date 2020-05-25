@@ -13,6 +13,10 @@ pub enum SyslogErrors {
 #[derive(Debug)]
 pub struct SyslogMessage {
     pub msg: String,
+    pub severity: Option<String>,
+    pub facility: Option<String>,
+    pub hostname: Option<String>,
+    pub appname: Option<String>,
 }
 
 /**
@@ -20,7 +24,16 @@ pub struct SyslogMessage {
  */
 pub fn parse_line(line: String) -> std::result::Result<SyslogMessage, SyslogErrors> {
     match syslog_rfc5424::parse_message(&line) {
-        Ok(msg) => Ok(SyslogMessage { msg: msg.msg }),
+        Ok(msg) => {
+            let wrapped = SyslogMessage {
+                msg: msg.msg,
+                severity: Some(msg.severity.as_str().to_string()),
+                facility: Some(msg.facility.as_str().to_string()),
+                hostname: msg.hostname,
+                appname: msg.appname,
+            };
+            Ok(wrapped)
+        },
         Err(_) => {
             let parsed = syslog_loose::parse_message(&line);
 
@@ -29,9 +42,14 @@ pub fn parse_line(line: String) -> std::result::Result<SyslogMessage, SyslogErro
              * parsed properly is if some fields are None'd out.
              */
             if parsed.timestamp != None {
-                return Ok(SyslogMessage {
+                let wrapped = SyslogMessage {
                     msg: parsed.msg.to_string(),
-                });
+                    severity: parsed.severity.map_or_else(|| None, |s| Some(s.as_str().to_string())),
+                    facility: parsed.facility.map_or_else(|| None, |f| Some(f.as_str().to_string())),
+                    hostname: parsed.hostname.map_or_else(|| None, |h| Some(h.to_string())),
+                    appname: parsed.appname.map_or_else(|| None, |a| Some(a.to_string())),
+                };
+                return Ok(wrapped);
             }
             Err(SyslogErrors::UnknownFormat)
         }
@@ -59,6 +77,12 @@ mod tests {
         assert!(parsed.is_ok());
         if let Ok(msg) = parsed {
             assert_eq!("hi", msg.msg);
+            assert_eq!(Some("coconut".to_string()), msg.hostname);
+            assert_eq!(Some("user".to_string()), msg.facility);
+            assert_eq!(Some("notice".to_string()), msg.severity);
+        }
+        else {
+            assert!(false);
         }
     }
 
@@ -69,6 +93,13 @@ mod tests {
         assert!(parsed.is_ok());
         if let Ok(msg) = parsed {
             assert_eq!("hi", msg.msg);
+            assert_eq!(Some("coconut".to_string()), msg.hostname);
+            assert_eq!(Some("hotdog".to_string()), msg.appname);
+            assert_eq!(Some("local7".to_string()), msg.facility);
+            assert_eq!(Some("info".to_string()), msg.severity);
+        }
+        else {
+            assert!(false);
         }
     }
 }

@@ -1,0 +1,40 @@
+# A simple test configuration for verifiying field based routing
+---
+global:
+  listen:
+    address: '127.0.0.1'
+    port: 1514
+    tls:
+  kafka:
+    conf:
+      bootstrap.servers: '127.0.0.1:9092'
+    # Default topic to log messages to that are not otherwise mapped
+    topic: 'test'
+  metrics:
+    statsd: 'localhost:8125'
+
+rules:
+  - regex: '^coconut$'
+    field: hostname
+    actions:
+      - type: replace
+        template: |
+          This messages was received by my workstation
+
+          {{msg}}
+
+      - type: forward
+        topic: test
+
+  - regex: '.*'
+    field: hostname
+    actions:
+      - type: replace
+        template: |
+          This message NOT received properly
+
+          {{msg}}
+
+      - type: forward
+        topic: test
+

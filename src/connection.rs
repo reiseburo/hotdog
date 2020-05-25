@@ -2,6 +2,7 @@ use crate::errors;
 use crate::kafka::KafkaMessage;
 use crate::merge;
 use crate::parse;
+use crate::rules;
 use crate::settings::*;
 /**
  * The connection module is responsible for handling everything pertaining to a single inbound TCP
@@ -110,45 +111,28 @@ impl Connection {
 
                 match rule.field {
                     Field::Msg => {
-                        /*
-                         * Check to see if we have a jmespath first
-                         */
-                        if !rule.jmespath.is_empty() {
-                            let expr = jmespath::compile(&rule.jmespath).unwrap();
-                            if let Ok(data) = jmespath::Variable::from_json(&msg.msg) {
-                                // Search the data with the compiled expression
-                                if let Ok(result) = expr.search(data) {
-                                    if !result.is_null() {
-                                        rule_matches = true;
-                                        debug!("jmespath rule matched, value: {}", result);
-                                        if let Some(value) = result.as_string() {
-                                            hash.insert("value".to_string(), value.to_string());
-                                        } else {
-                                            warn!("Unable to parse out the string value for {}, the `value` variable substitution will not be available,", result);
-                                        }
-                                    }
-                                }
-                            }
-                        } else if let Some(regex) = &rule.regex {
-                            if let Some(captures) = regex.captures(&msg.msg) {
-                                rule_matches = true;
-
-                                for name in regex.capture_names() {
-                                    if let Some(name) = name {
-                                        if let Some(value) = captures.name(name) {
-                                            hash.insert(
-                                                name.to_string(),
-                                                String::from(value.as_str()),
-                                            );
-                                        }
-                                    }
-                                }
-                            }
+                        rule_matches = rules::apply_rule(&rule, &msg.msg, &mut hash);
+                    },
+                    Field::Appname => {
+                        if let Some(appname) = &msg.appname {
+                            rule_matches = rules::apply_rule(&rule, &appname, &mut hash);
                         }
-                    }
-                    _ => {
-                        warn!("unhandled `field` for rule");
-                    }
+                    },
+                    Field::Hostname => {
+                        if let Some(hostname) = &msg.hostname {
+                            rule_matches = rules::apply_rule(&rule, &hostname, &mut hash);
+                        }
+                    },
+                    Field::Severity => {
+                        if let Some(severity) = &msg.severity {
+                            rule_matches = rules::apply_rule(&rule, &severity, &mut hash);
+                        }
+                    },
+                    Field::Facility => {
+                        if let Some(facility) = &msg.facility {
+                            rule_matches = rules::apply_rule(&rule, &facility, &mut hash);
+                        }
+                    },
                 }
 
                 /*
@@ -248,6 +232,7 @@ impl Connection {
 
         Ok(())
     }
+
 }
 
 /**
