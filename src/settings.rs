@@ -145,6 +145,7 @@ impl Default for TlsType {
 pub struct Listen {
     pub address: String,
     pub port: u64,
+    #[serde(default)]
     pub tls: TlsType,
 }
 

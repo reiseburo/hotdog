@@ -4,7 +4,6 @@ global:
   listen:
     address: '127.0.0.1'
     port: 514
-    tls:
   kafka:
     conf:
       bootstrap.servers: '127.0.0.1:9092'
