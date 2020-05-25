@@ -79,15 +79,15 @@ example:
 ----
 ❯ RUST_LOG=info ./target/debug/hotdog -t example.log
 Line 1 matches on:
-         - ^hello\s+(?P<name>\w+)?
-         - .*
+         - Regex: ^hello\s+(?P<name>\w+)?
+         - Regex: .*
 Line 2 matches on:
-         - .*
+         - Regex: .*
 Line 3 matches on:
-         - .*
+         - Regex: .*
 Line 4 matches on:
-         - ^\{(.*)?\}$
-         - .*
+         - JMESPath: meta.topic
+         - Regex: .*
 ----
 
 [[global]]
@@ -249,6 +249,27 @@ rules:
       - type: forward
         topic: 'logs-unknown'
 ----
+
+.Supported Fields
+|===
+| Name | Notes
+
+| `msg`
+| The actual message sent along from the syslog server
+
+| `hostname`
+| The sender's hostname, if available.
+
+| `appname`
+| The logging application, if available, which created the syslog entry
+
+| `facility`
+| The syslog logging facility, if available, which was used to create the syslog message. For example `kern`, `user`, `auth`, etc.
+
+| `severity`
+| The severity of the syslog message, if available. For example: `notice`, `err`, `crit`, etc.
+
+|===
 
 [[rules-regex]]
 ==== Matching with regular expressions

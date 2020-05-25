@@ -47,12 +47,16 @@ fn load_configuration(file: &str) -> config::Config {
     conf
 }
 
+/**
+ * Valid field to apply the rule upon
+ *
+ * They should be camel-cased in the yaml configuration
+ */
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Field {
     Severity,
     Facility,
-    Timestamp,
     Hostname,
     Appname,
     Msg,
@@ -101,6 +105,16 @@ impl Rule {
         self.actions.iter_mut().for_each(|action| {
             action.populate_caches();
         });
+    }
+}
+impl std::fmt::Display for Rule {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        if let Some(regex) = &self.regex {
+            write!(f, "Regex: {}", regex)
+        }
+        else {
+            write!(f, "JMESPath: {}", self.jmespath)
+        }
     }
 }
 
