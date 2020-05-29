@@ -1,3 +1,5 @@
+use log::*;
+
 /**
  * Enum of syslog parse related errors
  */
@@ -51,6 +53,7 @@ pub fn parse_line(line: String) -> std::result::Result<SyslogMessage, SyslogErro
                 };
                 return Ok(wrapped);
             }
+            warn!("Message received we cannot parse: {}", line);
             Err(SyslogErrors::UnknownFormat)
         }
     }

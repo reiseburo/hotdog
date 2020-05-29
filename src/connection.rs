@@ -94,9 +94,9 @@ impl Connection {
 
             let parsed = parse::parse_line(line);
 
-            if let Err(_e) = &parsed {
+            if let Err(e) = &parsed {
                 self.metrics.counter("error.log_parse").count(1);
-                error!("failed to parse messad");
+                error!("failed to parse message: {:?}", e);
                 continue;
             }
             /*
