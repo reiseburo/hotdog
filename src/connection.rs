@@ -26,6 +26,13 @@ struct RuleState<'a> {
     metrics: Arc<StatsdScope>,
 }
 
+
+/**
+ * Simple type to capture a map of precompiled jmespath expressions
+ */
+pub type JmesPathExpressions<'a> = HashMap<String, jmespath::Expression<'a>>;
+
+
 pub struct Connection {
     /**
      * A reference to the global Settings object for all configuration information
@@ -67,8 +74,16 @@ impl Connection {
         let lines_count = self.metrics.counter("lines");
 
         let mut hb = Handlebars::new();
+        let mut jmespaths = JmesPathExpressions::new();
+
         if !precompile_templates(&mut hb, self.settings.clone()) {
             error!("Failing to precompile templates is a fatal error, not going to parse logs since the configuration is broken");
+            // TODO fix the Err types
+            return Ok(());
+        }
+
+        if !precompile_jmespath(&mut jmespaths, self.settings.clone()) {
+            error!("Failing to precompile jmespaths is a fata error, not parsing this connection's logs because the configuration is broken");
             // TODO fix the Err types
             return Ok(());
         }
@@ -111,26 +126,26 @@ impl Connection {
 
                 match rule.field {
                     Field::Msg => {
-                        rule_matches = rules::apply_rule(&rule, &msg.msg, &mut hash);
+                        rule_matches = rules::apply_rule(&rule, &msg.msg, &jmespaths, &mut hash);
                     },
                     Field::Appname => {
                         if let Some(appname) = &msg.appname {
-                            rule_matches = rules::apply_rule(&rule, &appname, &mut hash);
+                            rule_matches = rules::apply_rule(&rule, &appname, &jmespaths, &mut hash);
                         }
                     },
                     Field::Hostname => {
                         if let Some(hostname) = &msg.hostname {
-                            rule_matches = rules::apply_rule(&rule, &hostname, &mut hash);
+                            rule_matches = rules::apply_rule(&rule, &hostname, &jmespaths, &mut hash);
                         }
                     },
                     Field::Severity => {
                         if let Some(severity) = &msg.severity {
-                            rule_matches = rules::apply_rule(&rule, &severity, &mut hash);
+                            rule_matches = rules::apply_rule(&rule, &severity, &jmespaths, &mut hash);
                         }
                     },
                     Field::Facility => {
                         if let Some(facility) = &msg.facility {
-                            rule_matches = rules::apply_rule(&rule, &facility, &mut hash);
+                            rule_matches = rules::apply_rule(&rule, &facility, &jmespaths, &mut hash);
                         }
                     },
                 }
@@ -274,6 +289,28 @@ fn precompile_templates(hb: &mut Handlebars, settings: Arc<Settings>) -> bool {
                     }
                 }
                 _ => {}
+            }
+        }
+    }
+    true
+}
+
+
+/**
+ * precompile_jmespath will pre-generate all the necessary JMESPath::Variable objects from the
+ * configuration file and shove thoe in the map given to it
+ */
+fn precompile_jmespath(map: &mut JmesPathExpressions, settings: Arc<Settings>) -> bool {
+    for rule in settings.rules.iter() {
+        if let Some(expression) = &rule.jmespath {
+            if ! map.contains_key(expression) {
+                if let Ok(compiled) = jmespath::compile(&expression) {
+                    map.insert(expression.to_string(), compiled);
+                }
+                else {
+                    error!("Failed to compile the JMESPath expression: {}", expression);
+                    return false;
+                }
             }
         }
     }
@@ -446,5 +483,23 @@ mod tests {
         let result = precompile_templates(&mut hb, settings.clone());
         assert!(result);
         assert!(hb.has_template(&template_id));
+    }
+
+    #[test]
+    fn test_precompile_jmespath() {
+        let settings = Arc::new(load("test/configs/single-rule-with-merge.yml"));
+        let mut map = JmesPathExpressions::new();
+        let result = precompile_jmespath(&mut map, settings.clone());
+        assert!(result);
+        let expected = settings.rules[0].jmespath.as_ref().unwrap();
+        assert!(map.contains_key(expected));
+    }
+
+    #[test]
+    fn test_precompile_jmespath_baddata() {
+        let settings = Arc::new(load("test/configs/single-rule-with-invalid-jmespath.yml"));
+        let mut map = JmesPathExpressions::new();
+        let result = precompile_jmespath(&mut map, settings.clone());
+        assert!(!result);
     }
 }

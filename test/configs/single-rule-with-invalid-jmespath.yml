@@ -1,0 +1,27 @@
+# A simple test configuration for verifiying some Merge action behavior
+---
+global:
+  listen:
+    address: '127.0.0.1'
+    port: 514
+    tls:
+  kafka:
+    conf:
+      bootstrap.servers: '127.0.0.1:9092'
+    # Default topic to log messages to that are not otherwise mapped
+    topic: 'test'
+  metrics:
+    statsd: 'localhost:8125'
+
+rules:
+  # Match JSON content which has a meta.topic value, e.g.
+  #   {"meta":{"topic" : "foo"}}
+  - jmespath: '. 0 meta.topic'
+    field: msg
+    actions:
+      - type: merge
+        json:
+          meta:
+            hotdog:
+              version: '{{version}}'
+              timestamp: '{{iso8601}}'
