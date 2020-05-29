@@ -96,8 +96,9 @@ pub struct Rule {
     pub actions: Vec<Action>,
     #[serde(with = "serde_regex", default = "default_none")]
     pub regex: Option<regex::Regex>,
-    #[serde(default = "empty_str")]
-    pub jmespath: String,
+    #[serde(default = "default_none")]
+    pub jmespath: Option<String>,
+
 }
 
 impl Rule {
@@ -113,7 +114,7 @@ impl std::fmt::Display for Rule {
             write!(f, "Regex: {}", regex)
         }
         else {
-            write!(f, "JMESPath: {}", self.jmespath)
+            write!(f, "JMESPath: {}", self.jmespath.as_ref().unwrap())
         }
     }
 }
@@ -191,13 +192,6 @@ impl Settings {
  */
 
 /**
- * Allocate an return an empty string
- */
-fn empty_str() -> String {
-    String::new()
-}
-
-/**
  * Return the default size used for the Kafka buffer
  */
 fn kafka_buffer_default() -> usize {
@@ -242,11 +236,6 @@ mod tests {
     #[test]
     fn test_default_tls() {
         assert_eq!(TlsType::None, TlsType::default());
-    }
-
-    #[test]
-    fn test_empty_str() {
-        assert_eq!("".to_string(), empty_str());
     }
 
     #[test]

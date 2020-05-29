@@ -25,11 +25,12 @@ pub async fn test_rules(
         number += 1;
         let mut matches: Vec<&Rule> = vec![];
         let mut unused = HashMap::<String, String>::new();
+        let also_unused = HashMap::<String, jmespath::Expression>::new();
 
         for rule in settings.rules.iter() {
             match rule.field {
                 Field::Msg => {
-                    if apply_rule(&rule, &line, &mut unused) {
+                    if apply_rule(&rule, &line, &also_unused, &mut unused) {
                         matches.push(rule);
                     }
                 },
@@ -55,13 +56,14 @@ pub async fn test_rules(
  *
  * If the rule matches, then this will return true
  */
-pub fn apply_rule(rule: &Rule, value: &str, hash: &mut HashMap<String, String>) -> bool {
+pub fn apply_rule(rule: &Rule, value: &str, jmespaths: &crate::connection::JmesPathExpressions, hash: &mut HashMap<String, String>) -> bool {
     let mut rule_matches = false;
     /*
-        * Check to see if we have a jmespath first
-        */
-    if !rule.jmespath.is_empty() {
-        let expr = jmespath::compile(&rule.jmespath).unwrap();
+     * Check to see if we have a jmespath first
+     *
+     */
+    if let Some(expression) = &rule.jmespath {
+        let expr = &jmespaths[expression];
         if let Ok(data) = jmespath::Variable::from_json(value) {
             // Search the data with the compiled expression
             if let Ok(result) = expr.search(data) {
