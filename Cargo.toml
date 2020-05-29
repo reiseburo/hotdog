@@ -64,3 +64,12 @@ chrono = "~0.4.11"
 uuid = { version = "~0.8.1", features = ["v4"] }
 
 async-trait = "0.1.31"
+
+
+# Optimize the heck out of the release build, I have no idea what these flags
+# do
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units=1
+opt-level="s"
