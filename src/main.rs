@@ -39,7 +39,8 @@ mod status;
 use serve::*;
 use settings::*;
 
-fn main() -> Result<(), errors::HotdogError> {
+#[async_std::main]
+async fn main() -> Result<(), errors::HotdogError> {
     pretty_env_logger::init();
 
     let matches = App::new("Hotdog")
@@ -70,10 +71,6 @@ fn main() -> Result<(), errors::HotdogError> {
 
     if let Some(st) = &settings.global.status {
         let listen_to = format!("{}:{}", st.address, st.port).to_string();
-        /*
-         * Need to spin this into its own separate thread since tide will blcok 
-         * up the async executor in this thread.
-         */
         task::spawn(status::status_server(listen_to));
     }
 
@@ -107,12 +104,12 @@ fn main() -> Result<(), errors::HotdogError> {
         } => {
             info!("Serving in TLS mode");
             let mut server = crate::serve_tls::TlsServer::new(&state);
-            task::block_on(server.accept_loop(&addr, state))
+            server.accept_loop(&addr, state).await
         }
         _ => {
             info!("Serving in plaintext mode");
             let mut server = crate::serve_plain::PlaintextServer {};
-            task::block_on(server.accept_loop(&addr, state))
+            server.accept_loop(&addr, state).await
         }
     }
 }
