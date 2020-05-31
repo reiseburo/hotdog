@@ -1,10 +1,9 @@
+use crate::status::{Statistic, Stats};
 /**
  * The Kafka module contains all the tooling/code necessary for connecting hotdog to Kafka for
  * sending log lines along as Kafka messages
  */
-use async_std::sync::Arc;
 use crossbeam::channel::{bounded, Receiver, Sender};
-use dipstick::*;
 use futures::executor::ThreadPool;
 use futures::*;
 use log::*;
@@ -14,7 +13,8 @@ use rdkafka::consumer::{BaseConsumer, Consumer};
 use rdkafka::error::{KafkaError, RDKafkaError};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use std::collections::HashMap;
-use std::time::Duration;
+use std::convert::TryInto;
+use std::time::{Duration, Instant};
 
 /**
  * KafkaMessage just carries a message and its destination topic between tasks
@@ -40,24 +40,20 @@ pub struct Kafka {
      * ::new() and the .connect() function
      */
     producer: Option<FutureProducer<DefaultClientContext>>,
-    metrics: Option<Arc<StatsdScope>>,
+    stats: Sender<Statistic>,
     rx: Receiver<KafkaMessage>,
     tx: Sender<KafkaMessage>,
 }
 
 impl Kafka {
-    pub fn new(message_max: usize) -> Kafka {
+    pub fn new(message_max: usize, stats: Sender<Statistic>) -> Kafka {
         let (tx, rx) = bounded(message_max);
         Kafka {
-            metrics: None,
             producer: None,
+            stats,
             tx,
             rx,
         }
-    }
-
-    pub fn with_metrics(&mut self, metrics: Arc<StatsdScope>) {
-        self.metrics = Some(metrics);
     }
 
     /**
@@ -145,6 +141,9 @@ impl Kafka {
                  * even though we're explicitly not sending a key
                  */
                 let record = FutureRecord::<String, String>::to(&kmsg.topic).payload(&kmsg.msg);
+                let stats = self.stats.clone();
+
+                let start_time = Instant::now();
 
                 /*
                  * Intentionally setting the timeout_ms to -1 here so this blocks forever if the
@@ -152,62 +151,61 @@ impl Kafka {
                  * properly and cause messages to begin to be dropped, rather than buffering
                  * "forever" inside of hotdog
                  */
-                if let Some(metrics) = &self.metrics {
-                    let m = metrics.clone();
-                    let timer = metrics.timer("kafka.producer.sent");
-                    let handle = timer.start();
-                    let fut = producer
-                        .send(record, -1 as i64)
-                        .then(move |res| {
-                            // unwrap the always-Ok resultto get the real DeliveryFuture result
-                            let delivery_result = res.unwrap();
+                let fut = producer
+                    .send(record, -1 as i64)
+                    .then(move |res| {
+                        // unwrap the always-Ok resultto get the real DeliveryFuture result
+                        let delivery_result = res.unwrap();
 
-                            match delivery_result {
-                                Ok(_) => {
-                                    timer.stop(handle);
-                                    m.counter("kafka.submitted").count(1);
-                                    m.counter(&format!("kafka.submitted.{}", &kmsg.topic))
-                                        .count(1);
+                        match delivery_result {
+                            Ok(_) => {
+                                stats.send((Stats::KafkaMsgSubmitted { topic: kmsg.topic }, 1))
+                                    .unwrap_or_else(|e| { error!("Failed to collect stats on message sends: {}", e) });
+                                /*
+                                 * dipstick only supports u64 timers anyways, but as_micros() can
+                                 * give a u128 (!).
+                                 */
+                                if let Ok(elapsed) = start_time.elapsed().as_micros().try_into() {
+                                    stats.send((Stats::KafkaMsgSent, elapsed))
+                                        .unwrap_or_else(|e| { error!("Failed to collect stats on message times: {}", e) });
+                                } else {
+                                    error!("Could not collect message time because the duration couldn't fit in an i64, yikes");
                                 }
-                                Err((err, _)) => {
-                                    match err {
-                                        /*
-                                         * err_type will be one of RdKafkaError types defined:
-                                         * https://docs.rs/rdkafka/0.23.1/rdkafka/error/enum.RDKafkaError.html
-                                         */
-                                        KafkaError::MessageProduction(err_type) => {
-                                            error!(
-                                                "Failed to send message to Kafka due to: {}",
-                                                err_type
-                                            );
-                                            m.counter(&format!(
-                                                "kafka.producer.error.{}",
-                                                metric_name_for(err_type)
-                                            ))
-                                            .count(1);
-                                        }
-                                        _ => {
-                                            error!("Failed to send message to Kafka!");
-                                            m.counter("kafka.producer.error.generic").count(1);
-                                        }
+                            }
+                            Err((err, _)) => {
+                                match err {
+                                    /*
+                                     * err_type will be one of RdKafkaError types defined:
+                                     * https://docs.rs/rdkafka/0.23.1/rdkafka/error/enum.RDKafkaError.html
+                                     */
+                                    KafkaError::MessageProduction(err_type) => {
+                                        error!(
+                                            "Failed to send message to Kafka due to: {}",
+                                            err_type
+                                        );
+                                        stats.send((Stats::KafkaMsgErrored { errcode: metric_name_for(err_type) }, 1))
+                                            .unwrap_or_else(|e| { error!("Failed to collect stats on kafka errors: {}", e) });
+                                    }
+                                    _ => {
+                                        error!("Failed to send message to Kafka!");
+                                        stats.send((Stats::KafkaMsgErrored { errcode: String::from("generic") }, 1))
+                                            .unwrap_or_else(|e| { error!("Failed to collect stats on kafka errors: {}", e) });
                                     }
                                 }
                             }
-                            future::ok::<bool, bool>(true)
-                        })
-                        /* Need to obliterate the Output type defined on then's TryFuture with
-                         * a map so this can be spawned off to the threadpool, which requires
-                         * Future<Output = ()>
-                         */
-                        .map(|_| ());
-                    /*
-                     * Resolve this future off in the threadpool so we can report metrics once
-                     * things are complete
+                        }
+                        future::ok::<bool, bool>(true)
+                    })
+                    /* Need to obliterate the Output type defined on then's TryFuture with
+                     * a map so this can be spawned off to the threadpool, which requires
+                     * Future<Output = ()>
                      */
-                    pool.spawn_ok(fut);
-                } else {
-                    let _future = producer.send(record, -1 as i64);
-                }
+                    .map(|_| ());
+                /*
+                 * Resolve this future off in the threadpool so we can report metrics once
+                 * things are complete
+                 */
+                pool.spawn_ok(fut);
             }
         }
     }
@@ -227,6 +225,7 @@ fn metric_name_for(err: RDKafkaError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossbeam::channel::bounded;
 
     /**
      * Test that trying to connect to a nonexistent cluster returns false
@@ -238,8 +237,9 @@ mod tests {
             String::from("bootstrap.servers"),
             String::from("example.com:9092"),
         );
+        let (unused_sender, _) = bounded(1);
 
-        let mut k = Kafka::new(0);
+        let mut k = Kafka::new(0, unused_sender);
         assert_eq!(false, k.connect(&conf, Some(Duration::from_secs(1))));
     }
 

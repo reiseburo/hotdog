@@ -98,7 +98,6 @@ pub struct Rule {
     pub regex: Option<regex::Regex>,
     #[serde(default = "default_none")]
     pub jmespath: Option<String>,
-
 }
 
 impl Rule {
@@ -112,8 +111,7 @@ impl std::fmt::Display for Rule {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         if let Some(regex) = &self.regex {
             write!(f, "Regex: {}", regex)
-        }
-        else {
+        } else {
             write!(f, "JMESPath: {}", self.jmespath.as_ref().unwrap())
         }
     }

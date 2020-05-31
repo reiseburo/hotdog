@@ -13,9 +13,9 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_regex;
+extern crate strum;
 extern crate syslog_loose;
 extern crate syslog_rfc5424;
-extern crate strum;
 #[macro_use]
 extern crate strum_macros;
 
@@ -68,22 +68,30 @@ async fn main() -> Result<(), errors::HotdogError> {
 
     let settings_file = matches.value_of("config").unwrap_or("hotdog.yml");
     let settings = Arc::new(settings::load(settings_file));
-
-    if let Some(st) = &settings.global.status {
-        let listen_to = format!("{}:{}", st.address, st.port).to_string();
-        task::spawn(status::status_server(listen_to));
-    }
-
-    if let Some(test_file) = matches.value_of("test") {
-        return task::block_on(rules::test_rules(&test_file, settings));
-    }
-
     let metrics = Arc::new(
         Statsd::send_to(&settings.global.metrics.statsd)
             .expect("Failed to create Statsd recorder")
             .named("hotdog")
             .metrics(),
     );
+
+    let stats = Arc::new(status::StatsHandler::new(metrics.clone()));
+    let stats_sender = stats.tx.clone();
+
+    if let Some(st) = &settings.global.status {
+        task::spawn(status::status_server(
+            format!("{}:{}", st.address, st.port),
+            stats.clone(),
+        ));
+    }
+
+    task::spawn(async move {
+        stats.runloop().await;
+    });
+
+    if let Some(test_file) = matches.value_of("test") {
+        return task::block_on(rules::test_rules(&test_file, settings));
+    }
 
     let addr = format!(
         "{}:{}",
@@ -93,7 +101,7 @@ async fn main() -> Result<(), errors::HotdogError> {
 
     let state = ServerState {
         settings: settings.clone(),
-        metrics,
+        stats: stats_sender,
     };
 
     match &settings.global.listen.tls {
