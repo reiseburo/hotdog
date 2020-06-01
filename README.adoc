@@ -140,6 +140,23 @@ global:
 ----
 
 
+[[yml-status]]
+==== Status
+
+The `global.status` is an optional configuration entry which will enable the
+launching of an HTTP status server on the specified `addresss` and `port`.
+
+JSON formatted statistics can be retrieved on `/stats`.
+
+.hotdog.yml
+[source,yaml]
+---
+global:
+  status:
+    address: '127.0.0.1'
+    port: 8585
+---
+
 [[yml-kafka]]
 ==== Kafka
 
