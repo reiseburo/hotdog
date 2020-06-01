@@ -150,12 +150,12 @@ JSON formatted statistics can be retrieved on `/stats`.
 
 .hotdog.yml
 [source,yaml]
----
+----
 global:
   status:
     address: '127.0.0.1'
     port: 8585
----
+----
 
 [[yml-kafka]]
 ==== Kafka
