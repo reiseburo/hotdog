@@ -6,9 +6,8 @@ use crate::status;
 /**
  * The serve module is responsible for general syslog over TCP serving functionality
  */
-use async_std::{io::BufReader, net::*, prelude::*, sync::Arc, task};
+use async_std::{io::BufReader, net::*, prelude::*, sync::{Arc, Sender}, task};
 use async_trait::async_trait;
-use crossbeam::channel::Sender;
 use log::*;
 
 pub struct ServerState {
@@ -63,9 +62,7 @@ pub trait Server {
                 error!("Failure occurred while read_logs executed: {:?}", e);
             }
 
-            if let Err(e) = stats.send((status::Stats::ConnectionCount, -1)) {
-                error!("Somehow failed to track the channel close: {:?}", e);
-            }
+            stats.send((status::Stats::ConnectionCount, -1)).await;
         });
 
         Ok(())
@@ -98,7 +95,7 @@ pub trait Server {
 
         task::spawn(async move {
             debug!("Starting Kafka sendloop");
-            kafka.sendloop();
+            kafka.sendloop().await;
         });
 
         self.bootstrap(&state)?;
@@ -112,8 +109,7 @@ pub trait Server {
 
             state
                 .stats
-                .send((status::Stats::ConnectionCount, 1))
-                .unwrap_or_else(|e| error!("Failed to collect connection metrics: {}", e));
+                .send((status::Stats::ConnectionCount, 1)).await;
 
             let connection =
                 Connection::new(state.settings.clone(), sender.clone(), state.stats.clone());

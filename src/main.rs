@@ -90,7 +90,7 @@ async fn main() -> Result<(), errors::HotdogError> {
     });
 
     if let Some(test_file) = matches.value_of("test") {
-        return task::block_on(rules::test_rules(&test_file, settings));
+        return rules::test_rules(&test_file, settings).await;
     }
 
     let addr = format!(

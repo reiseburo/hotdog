@@ -8,10 +8,7 @@ edition = "2018"
 
 [dependencies]
 # Base asynchronous runtime
-# Cannot yet upgrade to 1.6.0 since there is something about it which seems to
-# break the incoming().next.await in the main accept_loop
-#async-std = { version = "~1.6.0", features = ["attributes"] }
-async-std = { version = "~1.5.0", features = ["attributes"] }
+async-std = { version = "~1.6.0", features = ["attributes"] }
 async-trait = "0.1.31"
 futures = { version = "~0.3.4", features = ["thread-pool"] }
 
@@ -25,10 +22,8 @@ clap = { version = "~2.33.0", features = ["yaml"] }
 chrono = "~0.4.11"
 # Handling configuration overlays
 config = { version = "~0.10.1", features = ["yaml"] }
-# Requiredfor communciating with across internal queues
-crossbeam = "~0.7"
 # Needed to report metrics of hotdog's performance
-dipstick = "~0.8.0"
+dipstick = "~0.9.0"
 # Used for string replacements and other template based transformations
 handlebars = "~3.0.1"
 # used for rule matching on JSON
@@ -63,11 +58,10 @@ syslog_rfc5424 = "~0.6.1"
 syslog_loose = "0.2.0"
 
 # Needed for the http-based health checks
-tide = "~0.8.1"
+tide = "~0.9.0"
 
 # Needed to tag rules and actions with their own unique identifiers
 uuid = { version = "~0.8.1", features = ["v4"] }
-
 
 # Optimize the heck out of the release build, I have no idea what these flags
 # do

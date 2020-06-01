@@ -4,14 +4,12 @@
  *
  * The status module is also responsible for dispatching _all_ statsd metrics.
  */
-use async_std::sync::{Arc, Mutex};
-use crossbeam::channel::{unbounded, Receiver, Sender};
+use async_std::sync::{channel, Arc, Mutex, Receiver, Sender};
 use dipstick::{InputScope, StatsdScope};
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::time::Duration;
 use tide::{Request, Response, StatusCode};
 
 /**
@@ -63,7 +61,7 @@ pub struct StatsHandler {
 
 impl StatsHandler {
     pub fn new(metrics: Arc<StatsdScope>) -> Self {
-        let (tx, rx) = unbounded();
+        let (tx, rx) = channel(1_000_000);
         let values = Arc::new(Mutex::new(HashMap::<String, i64>::new()));
 
         StatsHandler {
@@ -80,8 +78,7 @@ impl StatsHandler {
      */
     pub async fn runloop(&self) {
         loop {
-            let timeout_ms = Duration::from_millis(100);
-            if let Ok((stat, count)) = self.rx.recv_timeout(timeout_ms) {
+            if let Ok((stat, count)) = self.rx.recv().await {
                 trace!("Received stat to record: {} - {}", stat, count);
 
                 match stat {

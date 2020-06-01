@@ -9,9 +9,8 @@ use crate::status::{Statistic, Stats};
  * The connection module is responsible for handling everything pertaining to a single inbound TCP
  * connection.
  */
-use async_std::{io::BufReader, prelude::*, sync::Arc};
+use async_std::{io::BufReader, prelude::*, sync::{Arc, Sender}, task};
 use chrono::prelude::*;
-use crossbeam::channel::Sender;
 use handlebars::Handlebars;
 use log::*;
 use std::collections::HashMap;
@@ -90,8 +89,7 @@ impl Connection {
 
             if let Err(e) = &parsed {
                 self.stats
-                    .send((Stats::LogParseError, 1))
-                    .unwrap_or_else(|e| error!("Failed to count log parse error: {}", e));
+                    .send((Stats::LogParseError, 1)).await;
                 error!("failed to parse message: {:?}", e);
                 continue;
             }
@@ -100,8 +98,7 @@ impl Connection {
              */
             let msg = parsed.unwrap();
             self.stats
-                .send((Stats::LineReceived, 1))
-                .unwrap_or_else(|e| error!("Failed to count line received: {}", e));
+                .send((Stats::LineReceived, 1)).await;
             let mut continue_rules = true;
             debug!("parsed as: {}", msg.msg);
 
@@ -174,21 +171,6 @@ impl Connection {
                     match action {
                         Action::Forward { topic } => {
                             /*
-                             * quick check on our internal queue, if it's full, skip all the processing
-                             * and move onto the next message
-                             */
-                            if self.sender.is_full() {
-                                error!("Internal Kafka queue is full! Dropping 1 message");
-                                self.stats
-                                    .send((Stats::FullInternalQueueError, 1))
-                                    .unwrap_or_else(|e| {
-                                        error!("Failed to count full queue error: {}", e)
-                                    });
-                                continue_rules = false;
-                                break;
-                            }
-
-                            /*
                              * If a custom output was never defined, just take the
                              * raw message and pass that along.
                              */
@@ -203,30 +185,13 @@ impl Connection {
                                  * should be skipped.
                                  */
                                 let kmsg = KafkaMessage::new(actual_topic, output);
-                                match self.sender.try_send(kmsg) {
-                                    Err(err) => {
-                                        error!("Failed to push a message onto our internal Kafka queue: {:?}", err);
-                                        self.stats
-                                            .send((Stats::InternalPushError, 1))
-                                            .unwrap_or_else(|e| {
-                                                error!(
-                                                    "Failed to count internal queue error: {}",
-                                                    e
-                                                )
-                                            });
-                                    }
-                                    Ok(_) => {
-                                        debug!("Message enqueued");
-                                    }
-                                }
+                                self.sender.send(kmsg).await;
+                                task::yield_now().await;
                                 continue_rules = false;
                             } else {
                                 error!("Failed to process the configured topic: `{}`", topic);
                                 self.stats
-                                    .send((Stats::TopicParseFailed, 1))
-                                    .unwrap_or_else(|e| {
-                                        error!("Failed to count topic parse failure: {}", e)
-                                    });
+                                    .send((Stats::TopicParseFailed, 1)).await;
                             }
                             break;
                         }
@@ -347,8 +312,7 @@ fn perform_merge(buffer: &str, template_id: &str, state: &RuleState) -> Result<S
                 error!("Merge requested was not a JSON object: {}", to_merge);
                 state
                     .stats
-                    .send((Stats::MergeTargetNotJsonError, 1))
-                    .unwrap_or_else(|e| error!("Failed to count merge target error: {}", e));
+                    .send((Stats::MergeTargetNotJsonError, 1));
                 return Ok(buffer.to_string());
             }
 
@@ -363,8 +327,7 @@ fn perform_merge(buffer: &str, template_id: &str, state: &RuleState) -> Result<S
         error!("Failed to parse as JSON, stopping actions: {}", buffer);
         state
             .stats
-            .send((Stats::MergeInvalidJsonError, 1))
-            .unwrap_or_else(|e| error!("Failed to count target json error: {}", e));
+            .send((Stats::MergeInvalidJsonError, 1));
         Err("Not JSON".to_string())
     }
 }
@@ -372,7 +335,7 @@ fn perform_merge(buffer: &str, template_id: &str, state: &RuleState) -> Result<S
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossbeam::channel::bounded;
+    use async_std::sync::channel;
 
     /**
      * Generating a test RuleState for consistent states in test
@@ -381,7 +344,7 @@ mod tests {
         hb: &'a handlebars::Handlebars<'a>,
         hash: &'a HashMap<String, String>,
     ) -> RuleState<'a> {
-        let (unused_sender, _) = bounded(1);
+        let (unused_sender, _) = channel(1);
         RuleState {
             hb: &hb,
             variables: &hash,
