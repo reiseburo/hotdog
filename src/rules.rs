@@ -33,10 +33,10 @@ pub async fn test_rules(
                     if apply_rule(&rule, &line, &also_unused, &mut unused) {
                         matches.push(rule);
                     }
-                },
+                }
                 _ => {
                     error!("The test mode will only work on `field: msg` rules");
-                },
+                }
             }
         }
 
@@ -56,7 +56,12 @@ pub async fn test_rules(
  *
  * If the rule matches, then this will return true
  */
-pub fn apply_rule(rule: &Rule, value: &str, jmespaths: &crate::connection::JmesPathExpressions, hash: &mut HashMap<String, String>) -> bool {
+pub fn apply_rule(
+    rule: &Rule,
+    value: &str,
+    jmespaths: &crate::connection::JmesPathExpressions,
+    hash: &mut HashMap<String, String>,
+) -> bool {
     let mut rule_matches = false;
     /*
      * Check to see if we have a jmespath first
@@ -85,10 +90,7 @@ pub fn apply_rule(rule: &Rule, value: &str, jmespaths: &crate::connection::JmesP
             for name in regex.capture_names() {
                 if let Some(name) = name {
                     if let Some(value) = captures.name(name) {
-                        hash.insert(
-                            name.to_string(),
-                            String::from(value.as_str()),
-                        );
+                        hash.insert(name.to_string(), String::from(value.as_str()));
                     }
                 }
             }

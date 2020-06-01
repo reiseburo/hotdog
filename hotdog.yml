@@ -9,7 +9,9 @@ global:
       key: './contrib/cert-key.pem'
     # Swap these values out in order to listen for plaintext syslog
     #port: 1514
-    #tls:
+  status:
+    address: '127.0.0.1'
+    port: 8585
   kafka:
     # Maximum number of messages to buffer internally while waiting for Kafka
     # responses

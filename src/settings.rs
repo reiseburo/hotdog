@@ -98,7 +98,6 @@ pub struct Rule {
     pub regex: Option<regex::Regex>,
     #[serde(default = "default_none")]
     pub jmespath: Option<String>,
-
 }
 
 impl Rule {
@@ -112,8 +111,7 @@ impl std::fmt::Display for Rule {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         if let Some(regex) = &self.regex {
             write!(f, "Regex: {}", regex)
-        }
-        else {
+        } else {
             write!(f, "JMESPath: {}", self.jmespath.as_ref().unwrap())
         }
     }
@@ -145,6 +143,7 @@ impl Default for TlsType {
 pub struct Listen {
     pub address: String,
     pub port: u64,
+    #[serde(default)]
     pub tls: TlsType,
 }
 
@@ -164,10 +163,17 @@ pub struct Metrics {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Status {
+    pub address: String,
+    pub port: u64,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Global {
-    pub listen: Listen,
     pub kafka: Kafka,
+    pub listen: Listen,
     pub metrics: Metrics,
+    pub status: Option<Status>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -2,12 +2,12 @@ use crate::connection::*;
 use crate::errors;
 use crate::serve::*;
 use crate::settings::*;
+use crate::status;
 /**
  * This module handles the necessary configuration to serve over TLS
  */
-use async_std::{io, io::BufReader, net::TcpStream, sync::Arc, task};
+use async_std::{io, io::BufReader, net::TcpStream, sync::{Arc, Sender}, task};
 use async_tls::TlsAcceptor;
-use crossbeam::channel::Sender;
 use log::*;
 use rustls::internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use rustls::{
@@ -44,7 +44,7 @@ impl Server for TlsServer {
         &self,
         stream: TcpStream,
         connection: Connection,
-        close_channel: Sender<i64>,
+        stats: Sender<status::Statistic>,
     ) -> Result<(), std::io::Error> {
         debug!("Accepting from: {}", stream.peer_addr()?);
 
@@ -67,9 +67,7 @@ impl Server for TlsServer {
                 }
             };
 
-            if let Err(e) = close_channel.send(-1) {
-                error!("Somehow failed to track the channel close: {:?}", e);
-            }
+            stats.send((status::Stats::ConnectionCount, -1)).await;
         });
         Ok(())
     }

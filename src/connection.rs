@@ -4,14 +4,13 @@ use crate::merge;
 use crate::parse;
 use crate::rules;
 use crate::settings::*;
+use crate::status::{Statistic, Stats};
 /**
  * The connection module is responsible for handling everything pertaining to a single inbound TCP
  * connection.
  */
-use async_std::{io::BufReader, prelude::*, sync::Arc};
+use async_std::{io::BufReader, prelude::*, sync::{Arc, Sender}, task};
 use chrono::prelude::*;
-use crossbeam::channel::Sender;
-use dipstick::{InputScope, StatsdScope};
 use handlebars::Handlebars;
 use log::*;
 use std::collections::HashMap;
@@ -23,15 +22,13 @@ use std::collections::HashMap;
 struct RuleState<'a> {
     variables: &'a HashMap<String, String>,
     hb: &'a handlebars::Handlebars<'a>,
-    metrics: Arc<StatsdScope>,
+    stats: Sender<Statistic>,
 }
-
 
 /**
  * Simple type to capture a map of precompiled jmespath expressions
  */
 pub type JmesPathExpressions<'a> = HashMap<String, jmespath::Expression<'a>>;
-
 
 pub struct Connection {
     /**
@@ -39,26 +36,23 @@ pub struct Connection {
      */
     settings: Arc<Settings>,
     /**
-     * A valid and constructed StatsdScope for sending metrics along
-     */
-    metrics: Arc<StatsdScope>,
-    /**
      * The sender-side of the channel to our Kafka connection, allowing the logs read in to be
      * sent over to the Kafka handler
      */
     sender: Sender<KafkaMessage>,
+    stats: Sender<Statistic>,
 }
 
 impl Connection {
     pub fn new(
         settings: Arc<Settings>,
-        metrics: Arc<StatsdScope>,
         sender: Sender<KafkaMessage>,
+        stats: Sender<Statistic>,
     ) -> Self {
         Connection {
             settings,
-            metrics,
             sender,
+            stats,
         }
     }
 
@@ -71,7 +65,6 @@ impl Connection {
         reader: BufReader<R>,
     ) -> Result<(), errors::HotdogError> {
         let mut lines = reader.lines();
-        let lines_count = self.metrics.counter("lines");
 
         let mut hb = Handlebars::new();
         let mut jmespaths = JmesPathExpressions::new();
@@ -95,7 +88,8 @@ impl Connection {
             let parsed = parse::parse_line(line);
 
             if let Err(e) = &parsed {
-                self.metrics.counter("error.log_parse").count(1);
+                self.stats
+                    .send((Stats::LogParseError, 1)).await;
                 error!("failed to parse message: {:?}", e);
                 continue;
             }
@@ -103,7 +97,8 @@ impl Connection {
              * Now that we've logged the error, let's unpack and bubble the error anyways
              */
             let msg = parsed.unwrap();
-            lines_count.count(1);
+            self.stats
+                .send((Stats::LineReceived, 1)).await;
             let mut continue_rules = true;
             debug!("parsed as: {}", msg.msg);
 
@@ -127,27 +122,31 @@ impl Connection {
                 match rule.field {
                     Field::Msg => {
                         rule_matches = rules::apply_rule(&rule, &msg.msg, &jmespaths, &mut hash);
-                    },
+                    }
                     Field::Appname => {
                         if let Some(appname) = &msg.appname {
-                            rule_matches = rules::apply_rule(&rule, &appname, &jmespaths, &mut hash);
+                            rule_matches =
+                                rules::apply_rule(&rule, &appname, &jmespaths, &mut hash);
                         }
-                    },
+                    }
                     Field::Hostname => {
                         if let Some(hostname) = &msg.hostname {
-                            rule_matches = rules::apply_rule(&rule, &hostname, &jmespaths, &mut hash);
+                            rule_matches =
+                                rules::apply_rule(&rule, &hostname, &jmespaths, &mut hash);
                         }
-                    },
+                    }
                     Field::Severity => {
                         if let Some(severity) = &msg.severity {
-                            rule_matches = rules::apply_rule(&rule, &severity, &jmespaths, &mut hash);
+                            rule_matches =
+                                rules::apply_rule(&rule, &severity, &jmespaths, &mut hash);
                         }
-                    },
+                    }
                     Field::Facility => {
                         if let Some(facility) = &msg.facility {
-                            rule_matches = rules::apply_rule(&rule, &facility, &jmespaths, &mut hash);
+                            rule_matches =
+                                rules::apply_rule(&rule, &facility, &jmespaths, &mut hash);
                         }
-                    },
+                    }
                 }
 
                 /*
@@ -160,7 +159,7 @@ impl Connection {
                 let rule_state = RuleState {
                     hb: &hb,
                     variables: &hash,
-                    metrics: self.metrics.clone(),
+                    stats: self.stats.clone(),
                 };
 
                 /*
@@ -171,17 +170,6 @@ impl Connection {
 
                     match action {
                         Action::Forward { topic } => {
-                            /*
-                             * quick check on our internal queue, if it's full, skip all the processing
-                             * and move onto the next message
-                             */
-                            if self.sender.is_full() {
-                                error!("Internal Kafka queue is full! Dropping 1 message");
-                                self.metrics.counter("error.full_internal_queue").count(1);
-                                continue_rules = false;
-                                break;
-                            }
-
                             /*
                              * If a custom output was never defined, just take the
                              * raw message and pass that along.
@@ -197,19 +185,13 @@ impl Connection {
                                  * should be skipped.
                                  */
                                 let kmsg = KafkaMessage::new(actual_topic, output);
-                                match self.sender.try_send(kmsg) {
-                                    Err(err) => {
-                                        error!("Failed to push a message onto our internal Kafka queue: {:?}", err);
-                                        self.metrics.counter("error.internal_push_failed").count(1);
-                                    }
-                                    Ok(_) => {
-                                        debug!("Message enqueued");
-                                    }
-                                }
+                                self.sender.send(kmsg).await;
+                                task::yield_now().await;
                                 continue_rules = false;
                             } else {
                                 error!("Failed to process the configured topic: `{}`", topic);
-                                self.metrics.counter("error.topic_parse_failed").count(1);
+                                self.stats
+                                    .send((Stats::TopicParseFailed, 1)).await;
                             }
                             break;
                         }
@@ -247,7 +229,6 @@ impl Connection {
 
         Ok(())
     }
-
 }
 
 /**
@@ -295,7 +276,6 @@ fn precompile_templates(hb: &mut Handlebars, settings: Arc<Settings>) -> bool {
     true
 }
 
-
 /**
  * precompile_jmespath will pre-generate all the necessary JMESPath::Variable objects from the
  * configuration file and shove thoe in the map given to it
@@ -303,11 +283,10 @@ fn precompile_templates(hb: &mut Handlebars, settings: Arc<Settings>) -> bool {
 fn precompile_jmespath(map: &mut JmesPathExpressions, settings: Arc<Settings>) -> bool {
     for rule in settings.rules.iter() {
         if let Some(expression) = &rule.jmespath {
-            if ! map.contains_key(expression) {
+            if !map.contains_key(expression) {
                 if let Ok(compiled) = jmespath::compile(&expression) {
                     map.insert(expression.to_string(), compiled);
-                }
-                else {
+                } else {
                     error!("Failed to compile the JMESPath expression: {}", expression);
                     return false;
                 }
@@ -332,9 +311,8 @@ fn perform_merge(buffer: &str, template_id: &str, state: &RuleState) -> Result<S
             if !to_merge.is_object() {
                 error!("Merge requested was not a JSON object: {}", to_merge);
                 state
-                    .metrics
-                    .counter("error.merge_of_invalid_json")
-                    .count(1);
+                    .stats
+                    .send((Stats::MergeTargetNotJsonError, 1));
                 return Ok(buffer.to_string());
             }
 
@@ -348,9 +326,8 @@ fn perform_merge(buffer: &str, template_id: &str, state: &RuleState) -> Result<S
     } else {
         error!("Failed to parse as JSON, stopping actions: {}", buffer);
         state
-            .metrics
-            .counter("error.merge_target_not_json")
-            .count(1);
+            .stats
+            .send((Stats::MergeInvalidJsonError, 1));
         Err("Not JSON".to_string())
     }
 }
@@ -358,7 +335,7 @@ fn perform_merge(buffer: &str, template_id: &str, state: &RuleState) -> Result<S
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dipstick::{Input, Prefixed, Statsd};
+    use async_std::sync::channel;
 
     /**
      * Generating a test RuleState for consistent states in test
@@ -367,17 +344,11 @@ mod tests {
         hb: &'a handlebars::Handlebars<'a>,
         hash: &'a HashMap<String, String>,
     ) -> RuleState<'a> {
-        let metrics = Arc::new(
-            Statsd::send_to("example.com:8125")
-                .expect("Failed to create Statsd recorder")
-                .named("test")
-                .metrics(),
-        );
-
+        let (unused_sender, _) = channel(1);
         RuleState {
             hb: &hb,
             variables: &hash,
-            metrics,
+            stats: unused_sender,
         }
     }
 
