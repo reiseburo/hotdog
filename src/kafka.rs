@@ -3,7 +3,7 @@ use crate::status::{Statistic, Stats};
  * The Kafka module contains all the tooling/code necessary for connecting hotdog to Kafka for
  * sending log lines along as Kafka messages
  */
-use async_std::{sync::{channel, Receiver, Sender}, task};
+use async_std::{sync::{channel, Receiver, Sender}};
 use log::*;
 use rdkafka::client::DefaultClientContext;
 use rdkafka::config::ClientConfig;
