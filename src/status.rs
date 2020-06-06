@@ -10,7 +10,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryInto;
-use tide::{Request, Response, StatusCode};
+use tide::{Body, Request, Response, StatusCode};
 
 /**
  * HealthResponse is the simple struct used for serializing statistics for the /stats healthcheck
@@ -39,7 +39,9 @@ pub async fn status_server(
         .get(|req: Request<Arc<StatsHandler>>| async move {
             let health = req.state().healthcheck().await;
 
-            Ok(Response::new(StatusCode::Ok).body_json(&health)?)
+            let mut res = Response::new(StatusCode::Ok);
+            res.set_body(Body::from_json(&health)?);
+            Ok(res)
         });
 
     app.listen(listen_to).await?;

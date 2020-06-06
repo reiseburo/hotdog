@@ -58,7 +58,7 @@ syslog_rfc5424 = "~0.6.1"
 syslog_loose = "0.2.0"
 
 # Needed for the http-based health checks
-tide = "~0.9.0"
+tide = "~0.10.0"
 
 # Needed to tag rules and actions with their own unique identifiers
 uuid = { version = "~0.8.1", features = ["v4"] }
