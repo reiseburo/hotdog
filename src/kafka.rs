@@ -129,7 +129,7 @@ impl Kafka {
         let producer = self.producer.as_ref().unwrap();
 
         loop {
-            if let Ok(kmsg) = self.rx.recv().await {
+            if let Some(kmsg) = self.rx.recv().await {
                 /* Note, setting the `K` (key) type on FutureRecord to a string
                  * even though we're explicitly not sending a key
                  */
