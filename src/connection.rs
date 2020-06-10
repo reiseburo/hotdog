@@ -9,7 +9,12 @@ use crate::status::{Statistic, Stats};
  * The connection module is responsible for handling everything pertaining to a single inbound TCP
  * connection.
  */
-use async_std::{io::BufReader, prelude::*, sync::{Arc, Sender}, task};
+use async_std::{
+    io::BufReader,
+    prelude::*,
+    sync::{Arc, Sender},
+    task,
+};
 use chrono::prelude::*;
 use handlebars::Handlebars;
 use log::*;
@@ -88,8 +93,7 @@ impl Connection {
             let parsed = parse::parse_line(line);
 
             if let Err(e) = &parsed {
-                self.stats
-                    .send((Stats::LogParseError, 1)).await;
+                self.stats.send((Stats::LogParseError, 1)).await;
                 error!("failed to parse message: {:?}", e);
                 continue;
             }
@@ -97,8 +101,7 @@ impl Connection {
              * Now that we've logged the error, let's unpack and bubble the error anyways
              */
             let msg = parsed.unwrap();
-            self.stats
-                .send((Stats::LineReceived, 1)).await;
+            self.stats.send((Stats::LineReceived, 1)).await;
             let mut continue_rules = true;
             debug!("parsed as: {}", msg.msg);
 
@@ -190,8 +193,7 @@ impl Connection {
                                 continue_rules = false;
                             } else {
                                 error!("Failed to process the configured topic: `{}`", topic);
-                                self.stats
-                                    .send((Stats::TopicParseFailed, 1)).await;
+                                self.stats.send((Stats::TopicParseFailed, 1)).await;
                             }
                             break;
                         }
@@ -310,9 +312,7 @@ fn perform_merge(buffer: &str, template_id: &str, state: &RuleState) -> Result<S
              */
             if !to_merge.is_object() {
                 error!("Merge requested was not a JSON object: {}", to_merge);
-                state
-                    .stats
-                    .send((Stats::MergeTargetNotJsonError, 1));
+                state.stats.send((Stats::MergeTargetNotJsonError, 1));
                 return Ok(buffer.to_string());
             }
 
@@ -325,9 +325,7 @@ fn perform_merge(buffer: &str, template_id: &str, state: &RuleState) -> Result<S
         Err("Failed to merge and serialize".to_string())
     } else {
         error!("Failed to parse as JSON, stopping actions: {}", buffer);
-        state
-            .stats
-            .send((Stats::MergeInvalidJsonError, 1));
+        state.stats.send((Stats::MergeInvalidJsonError, 1));
         Err("Not JSON".to_string())
     }
 }
