@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 /**
  * KafkaMessage just carries a message and its destination topic between tasks
  */
+#[derive(Debug)]
 pub struct KafkaMessage {
     topic: String,
     msg: String,
@@ -130,6 +131,7 @@ impl Kafka {
 
         loop {
             if let Ok(kmsg) = self.rx.recv().await {
+                debug!("Sending to Kafka: {:?}", kmsg);
                 /* Note, setting the `K` (key) type on FutureRecord to a string
                  * even though we're explicitly not sending a key
                  */
