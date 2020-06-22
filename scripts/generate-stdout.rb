@@ -7,7 +7,9 @@
 
 require 'json'
 
-10_000.times do |count|
+count = ARGV.first  || 10_000
+
+count.to_i.times do |count|
   x = {
     :meta => {
       :topic => :test,
