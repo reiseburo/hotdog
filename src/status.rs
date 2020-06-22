@@ -30,7 +30,6 @@ pub async fn status_server(
     listen_to: String,
     stats: Arc<StatsHandler>,
 ) -> Result<(), std::io::Error> {
-    /*
     let mut app = tide::with_state(stats);
     debug!("Starting the status server on: {}", listen_to);
 
@@ -47,7 +46,6 @@ pub async fn status_server(
         });
 
     app.listen(listen_to).await?;
-    */
     Ok(())
 }
 
@@ -83,7 +81,7 @@ impl StatsHandler {
      */
     pub async fn runloop(&self) {
         loop {
-            if let Some((stat, count)) = self.rx.recv().await {
+            if let Ok((stat, count)) = self.rx.recv().await {
                 trace!("Received stat to record: {} - {}", stat, count);
 
                 match stat {
