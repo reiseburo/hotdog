@@ -6,7 +6,13 @@ use crate::status;
 /**
  * The serve module is responsible for general syslog over TCP serving functionality
  */
-use async_std::{io::BufReader, net::*, prelude::*, sync::{Arc, Sender}, task};
+use async_std::{
+    io::BufReader,
+    net::*,
+    prelude::*,
+    sync::{Arc, Sender},
+    task,
+};
 use async_trait::async_trait;
 use log::*;
 
@@ -107,9 +113,7 @@ pub trait Server {
             let stream = stream?;
             debug!("Accepting from: {}", stream.peer_addr()?);
 
-            state
-                .stats
-                .send((status::Stats::ConnectionCount, 1)).await;
+            state.stats.send((status::Stats::ConnectionCount, 1)).await;
 
             let connection =
                 Connection::new(state.settings.clone(), sender.clone(), state.stats.clone());

@@ -6,7 +6,13 @@ use crate::status;
 /**
  * This module handles the necessary configuration to serve over TLS
  */
-use async_std::{io, io::BufReader, net::TcpStream, sync::{Arc, Sender}, task};
+use async_std::{
+    io,
+    io::BufReader,
+    net::TcpStream,
+    sync::{Arc, Sender},
+    task,
+};
 use async_tls::TlsAcceptor;
 use log::*;
 use rustls::internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
