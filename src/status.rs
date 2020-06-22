@@ -4,7 +4,8 @@
  *
  * The status module is also responsible for dispatching _all_ statsd metrics.
  */
-use async_std::sync::{channel, Arc, Mutex, Receiver, Sender};
+use async_std::sync::{channel, Arc, Receiver, Sender};
+use dashmap::DashMap;
 use dipstick::{InputScope, StatsdScope};
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -51,7 +52,7 @@ pub async fn status_server(
 /**
  * Simple type for tracking our statistics as time goes on
  */
-type ThreadsafeStats = Arc<Mutex<HashMap<String, i64>>>;
+type ThreadsafeStats = Arc<DashMap<String, i64>>;
 pub type Statistic = (Stats, i64);
 
 pub struct StatsHandler {
@@ -64,7 +65,7 @@ pub struct StatsHandler {
 impl StatsHandler {
     pub fn new(metrics: Arc<StatsdScope>) -> Self {
         let (tx, rx) = channel(1_000_000);
-        let values = Arc::new(Mutex::new(HashMap::<String, i64>::new()));
+        let values = Arc::new(DashMap::default());
 
         StatsHandler {
             values,
@@ -103,12 +104,14 @@ impl StatsHandler {
      */
     async fn handle_gauge(&self, stat: Stats, count: i64) {
         let key = &stat.to_string();
-        let mut values = self.values.lock().await;
-        let new_count = values.get(key).unwrap_or(&0) + count;
+        let mut new_count = 0;
 
+        if let Some(gauge) = self.values.get(key) {
+            new_count = *gauge.value();
+        }
+        new_count += count;
         self.metrics.gauge(key).value(new_count);
-
-        values.insert(key.to_string(), new_count);
+        self.values.insert(key.to_string(), new_count);
     }
 
     /**
@@ -116,8 +119,12 @@ impl StatsHandler {
      */
     async fn handle_counter(&self, stat: Stats, count: i64) {
         let key = &stat.to_string();
-        let mut values = self.values.lock().await;
-        let new_count = values.get(key).unwrap_or(&0) + count;
+        let mut new_count = 0;
+
+        if let Some(counter) = self.values.get(key) {
+            new_count = *counter.value();
+        }
+        new_count += count;
 
         let sized_count: usize = count.try_into().expect("Could not convert to usize!");
 
@@ -128,17 +135,17 @@ impl StatsHandler {
             Stats::KafkaMsgSubmitted { topic } => {
                 let subkey = &*format!("{}.{}", key, topic);
                 self.metrics.counter(subkey).count(sized_count);
-                values.insert(subkey.to_string(), new_count);
+                self.values.insert(subkey.to_string(), new_count);
             }
             Stats::KafkaMsgErrored { errcode } => {
                 let subkey = &*format!("{}.{}", key, errcode);
                 self.metrics.counter(subkey).count(sized_count);
-                values.insert(subkey.to_string(), new_count);
+                self.values.insert(subkey.to_string(), new_count);
             }
             _ => {}
         };
 
-        values.insert(key.to_string(), new_count);
+        self.values.insert(key.to_string(), new_count);
     }
 
     /**
@@ -146,13 +153,13 @@ impl StatsHandler {
      */
     async fn handle_timer(&self, stat: Stats, duration_us: i64) {
         let key = &stat.to_string();
-        let mut values = self.values.lock().await;
+
         if let Ok(duration) = duration_us.try_into() {
             self.metrics.timer(key).interval_us(duration);
         } else {
             error!("Failed to report timer to statsd with an i64 that couldn't fit into u64");
         }
-        values.insert(key.to_string(), duration_us);
+        self.values.insert(key.to_string(), duration_us);
     }
 
     /**
@@ -162,8 +169,8 @@ impl StatsHandler {
     async fn healthcheck(&self) -> HealthResponse {
         let mut stats = HashMap::new();
 
-        for (key, value) in self.values.lock().await.iter() {
-            stats.insert(key.to_string(), *value);
+        for entry in self.values.iter() {
+            stats.insert(entry.key().clone(), entry.value().clone());
         }
 
         HealthResponse {

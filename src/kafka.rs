@@ -140,6 +140,9 @@ impl Kafka {
                 let start_time = Instant::now();
                 let producer = producer.clone();
 
+                // TODO: What if this is a task::spawn for each message, would that be too much
+                // overhead?
+
                 let record = FutureRecord::<String, String>::to(&kmsg.topic).payload(&kmsg.msg);
                 /*
                  * Intentionally setting the timeout_ms to -1 here so this blocks forever if the

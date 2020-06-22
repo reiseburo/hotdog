@@ -43,6 +43,8 @@ use settings::*;
 async fn main() -> Result<(), errors::HotdogError> {
     pretty_env_logger::init();
 
+    info!("Starting hotdog version {}", env!["CARGO_PKG_VERSION"]);
+
     let matches = App::new("Hotdog")
         .version(env!("CARGO_PKG_VERSION"))
         .author("R Tyler Croy <rtyler+hotdog@brokenco.de")

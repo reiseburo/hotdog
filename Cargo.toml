@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 # Base asynchronous runtime
-async-std = { version = "~1.6.0", features = ["attributes"] }
+async-std = { version = "~1.6.1", features = ["attributes"] }
 async-trait = "0.1.31"
 futures = { version = "~0.3.4", features = ["thread-pool"] }
 
@@ -22,6 +22,7 @@ clap = { version = "~2.33.0", features = ["yaml"] }
 chrono = "~0.4.11"
 # Handling configuration overlays
 config = { version = "~0.10.1", features = ["yaml"] }
+dashmap = "~3.11.4"
 # Needed to report metrics of hotdog's performance
 dipstick = "~0.9.0"
 # Used for string replacements and other template based transformations
@@ -32,6 +33,8 @@ handlebars = "~3.0.1"
 jmespath = { git = "https://github.com/jmespath/jmespath.rs", features = ["sync"] }
 # Logging
 log = "~0.4.8"
+# Faster locking primitives
+parking_lot = "~0.10.2"
 pretty_env_logger = "~0.3.1"
 
 # Needed for forwarding messages along to Kafka
