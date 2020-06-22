@@ -189,7 +189,7 @@ impl Connection {
                                  */
                                 let kmsg = KafkaMessage::new(actual_topic, output);
                                 self.sender.send(kmsg).await;
-                                //task::yield_now().await;
+                                task::yield_now().await;
                                 continue_rules = false;
                             } else {
                                 error!("Failed to process the configured topic: `{}`", topic);
