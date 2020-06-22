@@ -170,6 +170,15 @@ impl Connection {
                  */
                 for index in 0..rule.actions.len() {
                     let action = &rule.actions[index];
+                    /*
+                     * @stjepang says this will fix slow future polling
+                     *
+                     * The underlying problem here is that this _can_ be a very tight
+                     * and CPU-bound loop under heavy load conditions. There is nothing
+                     * inherent in smol (under async-std 1.6.x) which will properly
+                     * yield to other tasks in the runtime.
+                     */
+                    task::yield_now().await;
 
                     match action {
                         Action::Forward { topic } => {
@@ -189,6 +198,12 @@ impl Connection {
                                  */
                                 let kmsg = KafkaMessage::new(actual_topic, output);
                                 self.sender.send(kmsg).await;
+                                /*
+                                 * Ensure that we're allowing other tasks to execute when we pass
+                                 * things off to the channel
+                                 *
+                                 * See also https://github.com/stjepang/smol/issues/159
+                                 */
                                 task::yield_now().await;
                                 continue_rules = false;
                             } else {
