@@ -619,6 +619,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "float-cmp"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da62c4f1b81918835a8c6a484a397775fff5953fe83529afd51b05f5c6a6617d"
+dependencies = [
+ "num-traits 0.2.12",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -773,6 +782,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "halfbrown"
+version = "0.1.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c12499524b5585419ab2f51545a19b842263a373580a83c0eb98a0142a260a10"
+dependencies = [
+ "hashbrown",
+ "serde 1.0.114",
+]
+
+[[package]]
 name = "handlebars"
 version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -784,6 +803,16 @@ dependencies = [
  "quick-error",
  "serde 1.0.114",
  "serde_json",
+]
+
+[[package]]
+name = "hashbrown"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96282e96bfcd3da0d3aa9938bedf1e50df3269b6db08b4876d2da0bb1a0841cf"
+dependencies = [
+ "ahash",
+ "autocfg",
 ]
 
 [[package]]
@@ -849,6 +878,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "serde_regex",
+ "simd-json",
  "smol",
  "strum",
  "strum_macros",
@@ -1711,6 +1741,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "simd-json"
+version = "0.3.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc89d07bde0ea8bed2559b48d735bb753aff4305f20841bb42a9021a456fe486"
+dependencies = [
+ "halfbrown",
+ "serde 1.0.114",
+ "serde_json",
+ "value-trait",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2096,6 +2138,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9fde2f6a4bea1d6e007c4ad38c6839fa71cbb63b6dbf5b595aa38dc9b1093c11"
 dependencies = [
  "rand",
+]
+
+[[package]]
+name = "value-trait"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0901856b3f57c2c00d2c12f76b1c5ca409bddbad8c38a5241becdc6ef48e061"
+dependencies = [
+ "float-cmp",
+ "halfbrown",
+ "itoa",
+ "ryu",
 ]
 
 [[package]]
