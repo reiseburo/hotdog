@@ -28,6 +28,7 @@ use log::*;
 
 mod connection;
 mod errors;
+mod json;
 mod kafka;
 mod merge;
 mod parse;

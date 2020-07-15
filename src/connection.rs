@@ -317,9 +317,9 @@ fn precompile_jmespath(map: &mut JmesPathExpressions, settings: Arc<Settings>) -
  * perform_merge will generate the buffer resulting of the JSON merge
  */
 fn perform_merge(buffer: &str, template_id: &str, state: &RuleState) -> Result<String, String> {
-    if let Ok(mut msg_json) = serde_json::from_str(&buffer) {
+    if let Ok(mut msg_json) = crate::json::from_str(&buffer) {
         if let Ok(rendered) = state.hb.render(template_id, &state.variables) {
-            let to_merge: serde_json::Value = serde_json::from_str(&rendered)
+            let to_merge: serde_json::Value = crate::json::from_str(&rendered)
                 .expect("Failed to deserialize our rendered to_merge_str");
 
             /*
@@ -333,7 +333,7 @@ fn perform_merge(buffer: &str, template_id: &str, state: &RuleState) -> Result<S
 
             merge::merge(&mut msg_json, &to_merge);
 
-            if let Ok(output) = serde_json::to_string(&msg_json) {
+            if let Ok(output) = crate::json::to_string(&msg_json) {
                 return Ok(output);
             }
         }
