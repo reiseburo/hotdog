@@ -2,22 +2,21 @@
  * This module acts as a shim between serde_json and simd-json to allow for higher performance JSON
  * parsing on SIMD-capable architectures
  */
-
-
 use serde;
 use serde_json;
 #[cfg(feature = "simd")]
 use simd_json;
 
-pub fn from_str<'a, S: serde::Deserialize<'a>>(buffer: &'a str) -> Result<S, serde_json::error::Error> {
+pub fn from_str<'a, S: serde::Deserialize<'a>>(buffer: &'a mut str) -> Result<S, std::io::Error> {
     #[cfg(feature = "simd")]
     {
         simd_json::serde::from_str::<S>(buffer)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
     }
 
-    #[cfg(not(feature="simd"))]
+    #[cfg(not(feature = "simd"))]
     {
-        serde_json::from_str::<S>(buffer)
+        serde_json::from_str::<S>(buffer).map_err(|e| e.into())
     }
 }
 
