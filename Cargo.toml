@@ -4,7 +4,10 @@ version = "0.3.3"
 authors = ["R. Tyler Croy <rtyler+hotdog@brokenco.de>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+default = []
+simd = ["simd-json"]
 
 [dependencies]
 # Base asynchronous runtime
@@ -52,6 +55,9 @@ serde_json = "~1.0.0"
 # Helpful to deserialize our regular expressions directly from the
 # configuration file
 serde_regex = "~0.4.0"
+
+simd-json = { version = "~0.3.14", optional = true}
+
 smol = "~0.1.18"
 # Needed to do clever enum/derive tricks for strings
 strum = "0.18.0"

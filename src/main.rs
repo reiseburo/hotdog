@@ -13,6 +13,8 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_regex;
+#[cfg(feature = "simd")]
+extern crate simd_json;
 extern crate strum;
 extern crate syslog_loose;
 extern crate syslog_rfc5424;
@@ -26,6 +28,7 @@ use log::*;
 
 mod connection;
 mod errors;
+mod json;
 mod kafka;
 mod merge;
 mod parse;

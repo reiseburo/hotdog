@@ -99,8 +99,11 @@ impl Connection {
             }
             /*
              * Now that we've logged the error, let's unpack and bubble the error anyways
+             *
+             * Note: msg needs to be mutable so we can fish the `msg` out within it during a
+             * simd_json parse
              */
-            let msg = parsed.unwrap();
+            let mut msg = parsed.unwrap();
             self.stats.send((Stats::LineReceived, 1)).await;
             let mut continue_rules = true;
             debug!("parsed as: {}", msg.msg);
@@ -215,9 +218,11 @@ impl Connection {
 
                         Action::Merge { json, json_str: _ } => {
                             debug!("merging JSON content: {}", json);
-                            if let Ok(buffer) =
-                                perform_merge(&msg.msg, &template_id_for(&rule, index), &rule_state)
-                            {
+                            if let Ok(buffer) = perform_merge(
+                                &mut msg.msg,
+                                &template_id_for(&rule, index),
+                                &rule_state,
+                            ) {
                                 output = buffer;
                             } else {
                                 continue_rules = false;
@@ -316,10 +321,14 @@ fn precompile_jmespath(map: &mut JmesPathExpressions, settings: Arc<Settings>) -
 /**
  * perform_merge will generate the buffer resulting of the JSON merge
  */
-fn perform_merge(buffer: &str, template_id: &str, state: &RuleState) -> Result<String, String> {
-    if let Ok(mut msg_json) = serde_json::from_str(&buffer) {
-        if let Ok(rendered) = state.hb.render(template_id, &state.variables) {
-            let to_merge: serde_json::Value = serde_json::from_str(&rendered)
+fn perform_merge(
+    mut buffer: &mut str,
+    template_id: &str,
+    state: &RuleState,
+) -> Result<String, String> {
+    if let Ok(mut msg_json) = crate::json::from_str(&mut buffer) {
+        if let Ok(mut rendered) = state.hb.render(template_id, &state.variables) {
+            let to_merge: serde_json::Value = crate::json::from_str(&mut rendered)
                 .expect("Failed to deserialize our rendered to_merge_str");
 
             /*
@@ -333,7 +342,7 @@ fn perform_merge(buffer: &str, template_id: &str, state: &RuleState) -> Result<S
 
             merge::merge(&mut msg_json, &to_merge);
 
-            if let Ok(output) = serde_json::to_string(&msg_json) {
+            if let Ok(output) = crate::json::to_string(&msg_json) {
                 return Ok(output);
             }
         }
@@ -374,7 +383,8 @@ mod tests {
         let hash = HashMap::<String, String>::new();
         let state = rule_state(&hb, &hash);
 
-        let output = perform_merge("{}", template_id, &state);
+        let mut buffer = "{}".to_string();
+        let output = perform_merge(&mut buffer, template_id, &state);
         assert_eq!(output, Ok("{}".to_string()));
     }
 
@@ -390,7 +400,8 @@ mod tests {
         let hash = HashMap::<String, String>::new();
         let state = rule_state(&hb, &hash);
 
-        let output = perform_merge("{}", template_id, &state)?;
+        let mut buffer = "{}".to_string();
+        let output = perform_merge(&mut buffer, template_id, &state)?;
         assert_eq!(output, "{}".to_string());
         Ok(())
     }
@@ -407,7 +418,8 @@ mod tests {
         let hash = HashMap::<String, String>::new();
         let state = rule_state(&hb, &hash);
 
-        let output = perform_merge("invalid", template_id, &state);
+        let mut buffer = "invalid".to_string();
+        let output = perform_merge(&mut buffer, template_id, &state);
         let expected = Err("Not JSON".to_string());
         assert_eq!(output, expected);
     }
@@ -424,7 +436,8 @@ mod tests {
         let hash = HashMap::<String, String>::new();
         let state = rule_state(&hb, &hash);
 
-        let output = perform_merge("{}", template_id, &state);
+        let mut buffer = "{}".to_string();
+        let output = perform_merge(&mut buffer, template_id, &state);
         assert_eq!(output, Ok("{\"hello\":1}".to_string()));
     }
 
@@ -441,7 +454,8 @@ mod tests {
         hash.insert("name".to_string(), "world".to_string());
         let state = rule_state(&hb, &hash);
 
-        let output = perform_merge("{}", template_id, &state);
+        let mut buffer = "{}".to_string();
+        let output = perform_merge(&mut buffer, template_id, &state);
         assert_eq!(output, Ok("{\"hello\":\"world\"}".to_string()));
     }
 
