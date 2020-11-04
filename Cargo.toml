@@ -11,7 +11,7 @@ simd = ["simd-json"]
 
 [dependencies]
 # Base asynchronous runtime
-async-std = { version = "~1.6.1", features = ["attributes"] }
+async-std = { version = "~1.7", features = ["attributes"] }
 async-trait = "0.1.31"
 futures = { version = "~0.3.4", features = ["thread-pool"] }
 
