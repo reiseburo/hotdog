@@ -13,7 +13,7 @@ Hotdog is a syslog-to-Kafka forwarder which aims to get log entries into
 link:https://kafka.apache.org[Apache Kafka]
 as quickly as possible.
 
-It listens for syslog messages over plaintext or TLS-encrupted TCP connection
+It listens for syslog messages over plaintext or TLS-encrypted TCP connection
 and depending on the defined <<rules>> it will route and even modify messages
 on their way into a <<yml-kafka, configured Kafka broker>>.
 
