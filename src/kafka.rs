@@ -1,5 +1,5 @@
 use crate::status::{Statistic, Stats};
-use async_std::sync::{channel, Receiver, Sender};
+use async_channel::{bounded, Receiver, Sender};
 /**
  * The Kafka module contains all the tooling/code necessary for connecting hotdog to Kafka for
  * sending log lines along as Kafka messages
@@ -9,8 +9,9 @@ use log::*;
 use rdkafka::client::DefaultClientContext;
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{BaseConsumer, Consumer};
-use rdkafka::error::{KafkaError, RDKafkaError};
+use rdkafka::error::{KafkaError, RDKafkaErrorCode};
 use rdkafka::producer::{FutureProducer, FutureRecord};
+use rdkafka::util::Timeout;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::time::{Duration, Instant};
@@ -47,7 +48,7 @@ pub struct Kafka {
 
 impl Kafka {
     pub fn new(message_max: usize, stats: Sender<Statistic>) -> Kafka {
-        let (tx, rx) = channel(message_max);
+        let (tx, rx) = bounded(message_max);
         Kafka {
             producer: None,
             stats,
@@ -149,59 +150,55 @@ impl Kafka {
 
                 task::spawn(async move {
                     let record = FutureRecord::<String, String>::to(&kmsg.topic).payload(&kmsg.msg);
+                    let timeout = Timeout::After(Duration::from_secs(60));
                     /*
                      * Intentionally setting the timeout_ms to -1 here so this blocks forever if the
                      * outbound librdkafka queue is full. This will block up the crossbeam channel
                      * properly and cause messages to begin to be dropped, rather than buffering
                      * "forever" inside of hotdog
                      */
-                    if let Ok(delivery_result) = producer.send(record, -1 as i64).await {
-                        match delivery_result {
-                            Ok(_) => {
-                                stats
-                                    .send((Stats::KafkaMsgSubmitted { topic: kmsg.topic }, 1))
-                                    .await;
-                                /*
-                                 * dipstick only supports u64 timers anyways, but as_micros() can
-                                 * give a u128 (!).
-                                 */
-                                if let Ok(elapsed) = start_time.elapsed().as_micros().try_into() {
-                                    stats.send((Stats::KafkaMsgSent, elapsed)).await;
-                                } else {
-                                    error!("Could not collect message time because the duration couldn't fit in an i64, yikes");
-                                }
+                    match producer.send(record, timeout).await {
+                        Ok(_) => {
+                            stats
+                                .send((Stats::KafkaMsgSubmitted { topic: kmsg.topic }, 1))
+                                .await;
+                            /*
+                             * dipstick only supports u64 timers anyways, but as_micros() can
+                             * give a u128 (!).
+                             */
+                            if let Ok(elapsed) = start_time.elapsed().as_micros().try_into() {
+                                stats.send((Stats::KafkaMsgSent, elapsed)).await;
+                            } else {
+                                error!("Could not collect message time because the duration couldn't fit in an i64, yikes");
                             }
-                            Err((err, _)) => {
-                                match err {
-                                    /*
-                                     * err_type will be one of RdKafkaError types defined:
-                                     * https://docs.rs/rdkafka/0.23.1/rdkafka/error/enum.RDKafkaError.html
-                                     */
-                                    KafkaError::MessageProduction(err_type) => {
-                                        error!(
-                                            "Failed to send message to Kafka due to: {}",
-                                            err_type
-                                        );
-                                        stats
-                                            .send((
-                                                Stats::KafkaMsgErrored {
-                                                    errcode: metric_name_for(err_type),
-                                                },
-                                                1,
-                                            ))
-                                            .await;
-                                    }
-                                    _ => {
-                                        error!("Failed to send message to Kafka!");
-                                        stats
-                                            .send((
-                                                Stats::KafkaMsgErrored {
-                                                    errcode: String::from("generic"),
-                                                },
-                                                1,
-                                            ))
-                                            .await;
-                                    }
+                        }
+                        Err((err, _)) => {
+                            match err {
+                                /*
+                                 * err_type will be one of RdKafkaError types defined:
+                                 * https://docs.rs/rdkafka/0.23.1/rdkafka/error/enum.RDKafkaError.html
+                                 */
+                                KafkaError::MessageProduction(err_type) => {
+                                    error!("Failed to send message to Kafka due to: {}", err_type);
+                                    stats
+                                        .send((
+                                            Stats::KafkaMsgErrored {
+                                                errcode: metric_name_for(err_type),
+                                            },
+                                            1,
+                                        ))
+                                        .await;
+                                }
+                                _ => {
+                                    error!("Failed to send message to Kafka!");
+                                    stats
+                                        .send((
+                                            Stats::KafkaMsgErrored {
+                                                errcode: String::from("generic"),
+                                            },
+                                            1,
+                                        ))
+                                        .await;
                                 }
                             }
                         }
@@ -216,7 +213,7 @@ impl Kafka {
  * A simple function for formatting the generated strings from RDKafkaError to be useful as metric
  * names for systems like statsd
  */
-fn metric_name_for(err: RDKafkaError) -> String {
+fn metric_name_for(err: RDKafkaErrorCode) -> String {
     if let Some(name) = err.to_string().to_lowercase().split(' ').next() {
         return name.to_string();
     }
@@ -237,7 +234,7 @@ mod tests {
             String::from("bootstrap.servers"),
             String::from("example.com:9092"),
         );
-        let (unused_sender, _) = channel(1);
+        let (unused_sender, _) = bounded(1);
 
         let mut k = Kafka::new(1, unused_sender);
         assert_eq!(false, k.connect(&conf, Some(Duration::from_secs(1))));
@@ -250,15 +247,18 @@ mod tests {
     fn test_metric_name_1() {
         assert_eq!(
             "messagetimedout",
-            metric_name_for(RDKafkaError::MessageTimedOut)
+            metric_name_for(RDKafkaErrorCode::MessageTimedOut)
         );
     }
     #[test]
     fn test_metric_name_2() {
-        assert_eq!("unknowntopic", metric_name_for(RDKafkaError::UnknownTopic));
+        assert_eq!(
+            "unknowntopic",
+            metric_name_for(RDKafkaErrorCode::UnknownTopic)
+        );
     }
     #[test]
     fn test_metric_name_3() {
-        assert_eq!("readonly", metric_name_for(RDKafkaError::ReadOnly));
+        assert_eq!("readonly", metric_name_for(RDKafkaErrorCode::ReadOnly));
     }
 }
