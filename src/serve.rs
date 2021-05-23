@@ -6,13 +6,8 @@ use crate::status;
 /**
  * The serve module is responsible for general syslog over TCP serving functionality
  */
-use async_std::{
-    io::BufReader,
-    net::*,
-    prelude::*,
-    sync::{Arc, Sender},
-    task,
-};
+use async_channel::Sender;
+use async_std::{io::BufReader, net::*, prelude::*, sync::Arc, task};
 use async_trait::async_trait;
 use log::*;
 

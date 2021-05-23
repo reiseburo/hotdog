@@ -9,12 +9,8 @@ use crate::status::{Statistic, Stats};
  * The connection module is responsible for handling everything pertaining to a single inbound TCP
  * connection.
  */
-use async_std::{
-    io::BufReader,
-    prelude::*,
-    sync::{Arc, Sender},
-    task,
-};
+use async_channel::Sender;
+use async_std::{io::BufReader, prelude::*, sync::Arc, task};
 use chrono::prelude::*;
 use handlebars::Handlebars;
 use log::*;
@@ -357,7 +353,7 @@ fn perform_merge(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_std::sync::channel;
+    use async_channel::bounded;
 
     /**
      * Generating a test RuleState for consistent states in test
@@ -366,7 +362,7 @@ mod tests {
         hb: &'a handlebars::Handlebars<'a>,
         hash: &'a HashMap<String, String>,
     ) -> RuleState<'a> {
-        let (unused_sender, _) = channel(1);
+        let (unused_sender, _) = bounded(1);
         RuleState {
             hb: &hb,
             variables: &hash,

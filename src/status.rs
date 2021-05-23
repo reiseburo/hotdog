@@ -4,7 +4,8 @@
  *
  * The status module is also responsible for dispatching _all_ statsd metrics.
  */
-use async_std::sync::{channel, Arc, Receiver, Sender};
+use async_channel::{bounded, Receiver, Sender};
+use async_std::sync::Arc;
 use dashmap::DashMap;
 use dipstick::{InputScope, StatsdScope};
 use log::*;
@@ -64,7 +65,7 @@ pub struct StatsHandler {
 
 impl StatsHandler {
     pub fn new(metrics: Arc<StatsdScope>) -> Self {
-        let (tx, rx) = channel(1_000_000);
+        let (tx, rx) = bounded(1_000_000);
         let values = Arc::new(DashMap::default());
 
         StatsHandler {
