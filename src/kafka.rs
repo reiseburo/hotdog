@@ -92,7 +92,7 @@ impl Kafka {
         }
         if let Ok(broker) = std::env::var("SASL_SCRAM_PASSWORD") {
             rd_conf.set("sasl.password", &broker);
-        }        
+        }
 
         let consumer: BaseConsumer = rd_conf
             .create()
