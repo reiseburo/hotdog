@@ -43,7 +43,7 @@ pretty_env_logger = "0"
 # Needed for forwarding messages along to Kafka
 # including the SSL and SASL features to ensure that this can authenticate
 # against secure Kafka clusters, e.g. AWS MSK
-rdkafka = { version = "0", features = ["ssl", "sasl"]}
+rdkafka = { version = "0", features = ["ssl", "sasl", "gssapi"]}
 # Used for rule matching
 regex = "1"
 
