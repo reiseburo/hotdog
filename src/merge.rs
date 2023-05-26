@@ -95,7 +95,7 @@ fn merge_in(json_value: &mut Value, json_pointer: &str, new_json_value: Value) {
     let next_fields = fields;
 
     // if json_pointer = "/"
-    if first_field == "" {
+    if first_field.is_empty() {
         json_value.merge(new_json_value);
         return;
     }

@@ -171,7 +171,7 @@ impl StatsHandler {
         let mut stats = HashMap::new();
 
         for entry in self.values.iter() {
-            stats.insert(entry.key().clone(), entry.value().clone());
+            stats.insert(entry.key().clone(), *entry.value());
         }
 
         HealthResponse {

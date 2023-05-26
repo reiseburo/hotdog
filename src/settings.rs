@@ -117,9 +117,10 @@ impl std::fmt::Display for Rule {
     }
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Default, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum TlsType {
+    #[default]
     None,
 
     /**
@@ -131,12 +132,6 @@ pub enum TlsType {
         key: std::path::PathBuf,
         ca: Option<std::path::PathBuf>,
     },
-}
-
-impl Default for TlsType {
-    fn default() -> TlsType {
-        TlsType::None
-    }
 }
 
 #[derive(Debug, Deserialize)]

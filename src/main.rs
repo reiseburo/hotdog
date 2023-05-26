@@ -95,7 +95,7 @@ async fn main() -> Result<(), errors::HotdogError> {
     });
 
     if let Some(test_file) = matches.value_of("test") {
-        return rules::test_rules(&test_file, settings).await;
+        return rules::test_rules(test_file, settings).await;
     }
 
     let addr = format!(
