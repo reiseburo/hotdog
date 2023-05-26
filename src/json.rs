@@ -7,7 +7,7 @@ use simd_json;
 
 pub fn from_str<'a, S: serde::Deserialize<'a>>(buffer: &'a mut str) -> Result<S, std::io::Error> {
     #[cfg(feature = "simd")]
-    {
+    unsafe {
         simd_json::serde::from_str::<S>(buffer)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
     }
