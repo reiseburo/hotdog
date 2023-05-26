@@ -2,8 +2,6 @@
  * This module acts as a shim between serde_json and simd-json to allow for higher performance JSON
  * parsing on SIMD-capable architectures
  */
-use serde;
-use serde_json;
 #[cfg(feature = "simd")]
 use simd_json;
 

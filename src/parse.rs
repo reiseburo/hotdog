@@ -43,7 +43,7 @@ pub fn parse_line(line: String) -> std::result::Result<SyslogMessage, SyslogErro
              * Since syslog_loose doesn't give a Result, the only way to tell if themessage wasn't
              * parsed properly is if some fields are None'd out.
              */
-            if parsed.timestamp != None {
+            if parsed.timestamp.is_some() {
                 let wrapped = SyslogMessage {
                     msg: parsed.msg.to_string(),
                     severity: parsed

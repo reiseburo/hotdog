@@ -30,7 +30,7 @@ pub async fn test_rules(
         for rule in settings.rules.iter() {
             match rule.field {
                 Field::Msg => {
-                    if apply_rule(&rule, &line, &also_unused, &mut unused) {
+                    if apply_rule(rule, &line, &also_unused, &mut unused) {
                         matches.push(rule);
                     }
                 }

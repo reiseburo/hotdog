@@ -123,30 +123,26 @@ impl Connection {
 
                 match rule.field {
                     Field::Msg => {
-                        rule_matches = rules::apply_rule(&rule, &msg.msg, &jmespaths, &mut hash);
+                        rule_matches = rules::apply_rule(rule, &msg.msg, &jmespaths, &mut hash);
                     }
                     Field::Appname => {
                         if let Some(appname) = &msg.appname {
-                            rule_matches =
-                                rules::apply_rule(&rule, &appname, &jmespaths, &mut hash);
+                            rule_matches = rules::apply_rule(rule, appname, &jmespaths, &mut hash);
                         }
                     }
                     Field::Hostname => {
                         if let Some(hostname) = &msg.hostname {
-                            rule_matches =
-                                rules::apply_rule(&rule, &hostname, &jmespaths, &mut hash);
+                            rule_matches = rules::apply_rule(rule, hostname, &jmespaths, &mut hash);
                         }
                     }
                     Field::Severity => {
                         if let Some(severity) = &msg.severity {
-                            rule_matches =
-                                rules::apply_rule(&rule, &severity, &jmespaths, &mut hash);
+                            rule_matches = rules::apply_rule(rule, severity, &jmespaths, &mut hash);
                         }
                     }
                     Field::Facility => {
                         if let Some(facility) = &msg.facility {
-                            rule_matches =
-                                rules::apply_rule(&rule, &facility, &jmespaths, &mut hash);
+                            rule_matches = rules::apply_rule(rule, facility, &jmespaths, &mut hash);
                         }
                     }
                 }
@@ -216,7 +212,7 @@ impl Connection {
                             debug!("merging JSON content: {}", json);
                             if let Ok(buffer) = perform_merge(
                                 &mut msg.msg,
-                                &template_id_for(&rule, index),
+                                &template_id_for(rule, index),
                                 &rule_state,
                             ) {
                                 output = buffer;
@@ -226,7 +222,7 @@ impl Connection {
                         }
 
                         Action::Replace { template } => {
-                            let template_id = template_id_for(&rule, index);
+                            let template_id = template_id_for(rule, index);
 
                             debug!(
                                 "replacing content with template: {} ({})",
@@ -271,7 +267,7 @@ fn precompile_templates(hb: &mut Handlebars, settings: Arc<Settings>) -> bool {
                     let template_id = template_id_for(rule, index);
 
                     if let Some(template) = json_str {
-                        if let Err(e) = hb.register_template_string(&template_id, &template) {
+                        if let Err(e) = hb.register_template_string(&template_id, template) {
                             error!("Failed to register template! {}\n{}", e, template);
                             return false;
                         }
@@ -282,7 +278,7 @@ fn precompile_templates(hb: &mut Handlebars, settings: Arc<Settings>) -> bool {
                 }
                 Action::Replace { template } => {
                     let template_id = format!("{}-{}", rule.uuid, index);
-                    if let Err(e) = hb.register_template_string(&template_id, &template) {
+                    if let Err(e) = hb.register_template_string(&template_id, template) {
                         error!("Failed to register template! {}\n{}", e, template);
                         return false;
                     }
@@ -302,7 +298,7 @@ fn precompile_jmespath(map: &mut JmesPathExpressions, settings: Arc<Settings>) -
     for rule in settings.rules.iter() {
         if let Some(expression) = &rule.jmespath {
             if !map.contains_key(expression) {
-                if let Ok(compiled) = jmespath::compile(&expression) {
+                if let Ok(compiled) = jmespath::compile(expression) {
                     map.insert(expression.to_string(), compiled);
                 } else {
                     error!("Failed to compile the JMESPath expression: {}", expression);
@@ -317,12 +313,8 @@ fn precompile_jmespath(map: &mut JmesPathExpressions, settings: Arc<Settings>) -
 /**
  * perform_merge will generate the buffer resulting of the JSON merge
  */
-fn perform_merge(
-    mut buffer: &mut str,
-    template_id: &str,
-    state: &RuleState,
-) -> Result<String, String> {
-    if let Ok(mut msg_json) = crate::json::from_str(&mut buffer) {
+fn perform_merge(buffer: &mut str, template_id: &str, state: &RuleState) -> Result<String, String> {
+    if let Ok(mut msg_json) = crate::json::from_str(buffer) {
         if let Ok(mut rendered) = state.hb.render(template_id, &state.variables) {
             let to_merge: serde_json::Value = crate::json::from_str(&mut rendered)
                 .expect("Failed to deserialize our rendered to_merge_str");
